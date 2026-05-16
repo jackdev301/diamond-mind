@@ -262,6 +262,59 @@ def game_bundle(
 
 
 # ---------------------------------------------------------------------------
+# Odds and weather
+# ---------------------------------------------------------------------------
+
+@app.get("/games/{game_id}/odds")
+def game_odds(game_id: int, db: Session = Depends(_get_db)):
+    """Return the most recent odds snapshots for a game."""
+    from sqlalchemy import desc
+    from app.models.odds import OddsSnapshotRow
+    rows = db.execute(
+        select(OddsSnapshotRow)
+        .where(OddsSnapshotRow.game_id == game_id)
+        .order_by(desc(OddsSnapshotRow.captured_at))
+    ).scalars().all()
+    return [
+        {
+            "game_id": r.game_id,
+            "bookmaker": r.bookmaker,
+            "market": r.market,
+            "selection": r.selection,
+            "american_odds": r.american_odds,
+            "line": r.line,
+            "captured_at": r.captured_at.isoformat(),
+        }
+        for r in rows
+    ]
+
+
+@app.get("/games/{game_id}/weather")
+def game_weather(game_id: int, db: Session = Depends(_get_db)):
+    """Return the most recent weather snapshot for a game."""
+    from sqlalchemy import desc
+    from app.models.odds import WeatherSnapshotRow
+    row = db.execute(
+        select(WeatherSnapshotRow)
+        .where(WeatherSnapshotRow.game_id == game_id)
+        .order_by(desc(WeatherSnapshotRow.captured_at))
+        .limit(1)
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(404, f"No weather data for game {game_id}")
+    return {
+        "game_id": row.game_id,
+        "temperature_f": row.temperature_f,
+        "wind_speed_mph": row.wind_speed_mph,
+        "wind_direction_deg": row.wind_direction_deg,
+        "precipitation_chance": row.precipitation_chance,
+        "humidity_pct": row.humidity_pct,
+        "is_dome": row.is_dome,
+        "captured_at": row.captured_at.isoformat(),
+    }
+
+
+# ---------------------------------------------------------------------------
 # LLM polish (optional — stubs if key missing)
 # ---------------------------------------------------------------------------
 

@@ -33,8 +33,12 @@ from app.ingestion.mlb_stats_api import (
     ingest_boxscore,
     ingest_schedule,
 )
+from app.ingestion.odds_api import fetch_odds, is_available as odds_available
+from app.ingestion.venue_coords import get_coords
+from app.ingestion.weather_api import fetch_weather
 from app.models.entities import Player, Team
 from app.models.games import Game
+from app.models.odds import OddsSnapshotRow, WeatherSnapshotRow
 
 logging.basicConfig(
     level=logging.INFO,
@@ -114,6 +118,42 @@ def _upsert_starter(session, w) -> None:
     session.execute(stmt)
 
 
+def _ingest_odds_and_weather(session, today_games: list, as_of: date) -> None:
+    """Fetch odds and weather for today's games and persist snapshots."""
+    from datetime import datetime, timezone
+    has_odds = odds_available()
+    if not has_odds:
+        log.info("ODDS_API_KEY not set — skipping odds fetch.")
+
+    for game in today_games:
+        game_id = game.id
+        venue = game.venue or ""
+        game_time = game.game_time_utc or datetime(as_of.year, as_of.month, as_of.day, 19, 5, tzinfo=timezone.utc)
+
+        # Weather
+        coords = get_coords(venue)
+        lat, lon = (coords if coords else (None, None))
+        weather = fetch_weather(game_id, venue, game_time, lat=lat, lon=lon)
+        if weather:
+            session.add(WeatherSnapshotRow(
+                game_id=game_id,
+                temperature_f=weather.temperature_f,
+                wind_speed_mph=weather.wind_speed_mph,
+                wind_direction_deg=weather.wind_direction_deg,
+                precipitation_chance=weather.precipitation_chance,
+                humidity_pct=weather.humidity_pct,
+                is_dome=weather.is_dome,
+                captured_at=weather.captured_at,
+            ))
+
+        # Odds — event_id not available from MLB API; skip for now unless mapped
+        if has_odds:
+            log.debug("Odds fetch for game %d skipped — event_id mapping not yet implemented.", game_id)
+
+    session.flush()
+    log.info("Weather snapshots saved for %d games.", len(today_games))
+
+
 def _ingest_completed_games(session, client: MLBStatsClient, yesterday: date) -> int:
     pks = ingest_schedule(session, client, yesterday)
     session.flush()
@@ -175,6 +215,12 @@ def run(as_of: date, dry_run: bool = False) -> None:
                     if bs is not None:
                         bullpen_count += 1
                 log.info("BullpenState built for %d teams.", bullpen_count)
+
+                # 7. Fetch weather (and odds if key present) for today's games.
+                today_games = session.execute(
+                    select(Game).where(Game.game_date == as_of)
+                ).scalars().all()
+                _ingest_odds_and_weather(session, today_games, as_of)
 
                 session.commit()
                 log.info("All changes committed.")

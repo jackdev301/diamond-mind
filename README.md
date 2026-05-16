@@ -1,8 +1,10 @@
 # diamond-mind
 
-AI-native baseball intelligence system. Generates a daily MLB pregame report — recent form, bullpen fatigue & vulnerability, weather, betting market verification — served through a React web dashboard with optional Claude polish.
+AI-native sports betting-intelligence system. Deterministic MLB models (full-game + first-5-innings) and an NBA port, run through a quant-grade pricing pipeline — Shin devig, Bayesian shrinkage to the market, edge-as-a-posterior, uncertainty-adjusted Kelly — served through a React dashboard with optional Claude polish.
 
-> **Not a pick bot.** A probabilistic decision-support tool that uses cautious language tiers (Strong Lean / Lean / Pass / Avoid / Need More Info). "Lock", "guaranteed", and "hammer" are forbidden by design.
+> **Not a pick bot.** A probabilistic decision-support tool that uses cautious language tiers (Strong Lean / Lean / Pass / Avoid / Need More Info). "Lock", "guaranteed", and "hammer" are forbidden by design. No trained black-box model — every number is a documented, testable formula.
+
+See **[ARC.md](ARC.md)** for the full system narrative, the quant math rationale, and current state.
 
 ---
 
@@ -48,12 +50,15 @@ See [docs/SETUP.md](docs/SETUP.md) for the full walkthrough.
 
 | Component | Location | Description |
 |-----------|----------|-------------|
-| Bullpen engine | `app/features/bullpen_*.py` | Fatigue scoring, quality rating, vulnerability (0–100) |
-| Betting utils | `app/betting/` | Implied probability, edge calc, recommendation tiers |
-| Odds/weather clients | `app/ingestion/odds_api.py`, `weather_api.py` | Graceful stubs when keys missing |
+| **Quant pipeline** | `app/betting/quant.py` | Shin devig (favorite–longshot correction), Bayesian shrinkage to the market prior, edge as a Beta posterior with P(edge>0), uncertainty-adjusted Kelly (Baker–McHale), expected log-growth. Sport-agnostic. |
+| MLB game model | `app/betting/game_analyzer.py` | Full-game win prob from FIP, bullpen, form, park, weather, rest — routed through the quant pipeline |
+| MLB F5 model | `app/betting/f5_model.py` | First-5-innings ML — isolates starter skill, bullpen excluded by design |
+| NBA model | `app/betting/nba_model.py` | Basketball port — home court, net-rating diff, rest/B2B → same quant pipeline (on-demand, explicit inputs) |
+| Bullpen engine | `app/features/bullpen_*.py` | Fatigue, quality, vulnerability (0–100); `bullpen_roles.py` infers leverage roles from real signals |
+| Betting utils | `app/betting/edge_calculator.py`, `implied_probability.py` | Implied probability, vig-free edge, recommendation tiers |
 | Report generator | `app/reports/daily_report.py` | Deterministic markdown — starters, bullpen, form, odds, weather |
 | Obsidian export | `app/obsidian/` | Wiki-linked vault notes per game, bullpen, daily report |
-| React frontend | `frontend/` | Next.js — Slate, Game Detail, Report Viewer, Bet Verifier |
+| React frontend | `frontend/` | Next.js — Slate, Picks, Game Detail, Report Viewer, Bet Verifier (gamey quant UI: P(+EV) gauge, model-vs-market duel, naive-vs-quant comparison) |
 
 ---
 
@@ -64,6 +69,13 @@ Base URL: `http://localhost:8000` — interactive docs at `/docs`.
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/games?game_date=YYYY-MM-DD` | Games for a date |
+| GET | `/games/slate?game_date=YYYY-MM-DD` | Whole slate, batched: games + bullpen + analysis |
+| GET | `/games/picks?game_date=YYYY-MM-DD` | All games analyzed + ranked by tier |
+| GET | `/games/{id}/analyze?as_of=YYYY-MM-DD` | Full-game model + quant pricing |
+| GET | `/games/{id}/analyze/f5?as_of=YYYY-MM-DD` | First-5-innings model |
+| GET | `/games/{id}/context?as_of=YYYY-MM-DD` | Bundle + weather + analysis in one call |
+| GET | `/quant/verify?model_prob=&side_odds=&other_odds=` | Live quant pipeline for any line (Verifier backend) |
+| GET | `/nba/analyze?home_team=&away_team=&home_net_rating=&away_net_rating=` | NBA moneyline, quant-priced |
 | GET | `/games/{id}/bundle?as_of=YYYY-MM-DD` | Full composite — form, starters, bullpen, in one call |
 | GET | `/games/{id}/odds` | Latest odds snapshots |
 | GET | `/games/{id}/weather` | Latest weather snapshot |
@@ -80,10 +92,11 @@ Base URL: `http://localhost:8000` — interactive docs at `/docs`.
 
 | Page | Route | Description |
 |------|-------|-------------|
-| Slate | `/` | Date-picker, game cards with bullpen vulnerability colour coding |
-| Game Detail | `/game/[id]` | Starters, bullpen intel, weather conditions |
+| Slate | `/` | Date-picker, game cards with model signal + bullpen vulnerability |
+| Picks | `/picks` | Slate ranked by tier — gamey quant cards (P(+EV) gauge, duel bar, Sonnet-vs-Opus devig) |
+| Game Detail | `/game/[id]` | Quant verdict, starters, bullpen intel, weather |
 | Daily Report | `/report` | Full markdown report + Polish with Claude (SDK / CLI / Raw badge) |
-| Bet Verifier | `/verify` | Client-side implied probability + edge calculator |
+| Bet Verifier | `/verify` | Live quant pipeline via `/quant/verify` — single source of truth, no client-side math |
 
 ---
 
@@ -109,7 +122,7 @@ app/
   models/            # 17 ORM tables
   features/          # recent_form, bullpen_fatigue/quality/vulnerability
   ingestion/         # mlb_stats_api, odds_api, weather_api, venue_coords
-  betting/           # edge_calculator, implied_probability
+  betting/           # quant (Shin/Bayesian/Kelly), game_analyzer, f5_model, nba_model, edge_calculator
   reports/           # daily_report generator
   obsidian/          # vault_writer, note_templates, link_utils
   llm/               # claude_client (polish)
@@ -118,9 +131,11 @@ scripts/
   init_db.py         # idempotent table creation
   run_pregame_update.py
   backfill_history.py
-  collab_server.py   # dev-only inter-agent relay
+  collab_server.py   # dev-only inter-agent relay (not an app runtime dep)
+  collab.py          # one-shot collab client
 frontend/            # Next.js app
-tests/               # 49 pytest tests + JSON fixtures
+tests/               # 168 pytest tests + JSON fixtures
+ARC.md               # full session/system narrative + handoff
 docs/
   PROJECT_BRIEF.md   # canonical vision and formulas
   SETUP.md           # full setup walkthrough

@@ -63,6 +63,46 @@ def fetch_odds(game_id: int, event_id: str) -> List[OddsSnapshot]:
     return snapshots
 
 
+def fetch_events(game_date: "date") -> list:
+    """Fetch all MLB events from the Odds API for a date. Returns [] if unavailable."""
+    from datetime import date, timedelta, timezone
+    # The Odds API uses ISO8601 commence_time filters.
+    start = f"{game_date.isoformat()}T00:00:00Z"
+    end = f"{(game_date + timedelta(days=1)).isoformat()}T00:00:00Z"
+    data = _get(f"/sports/{_SPORT}/events", {
+        "commenceTimeFrom": start,
+        "commenceTimeTo": end,
+    })
+    return data or []
+
+
+def match_event_id(events: list, home_abbr: str, away_abbr: str) -> "Optional[str]":
+    """Find an Odds API event_id by matching home/away team name substrings.
+
+    The Odds API uses full team names (e.g. 'Philadelphia Phillies') while
+    we have abbreviations ('PHI'). We keep a simple abbr→name substring map.
+    """
+    _ABBR_TO_SUBSTR = {
+        "ARI": "Arizona", "ATL": "Atlanta", "BAL": "Baltimore", "BOS": "Boston",
+        "CHC": "Cubs", "CWS": "White Sox", "CIN": "Cincinnati", "CLE": "Cleveland",
+        "COL": "Colorado", "DET": "Detroit", "HOU": "Houston", "KC": "Kansas City",
+        "LAA": "Angels", "LAD": "Los Angeles Dodgers", "MIA": "Miami",
+        "MIL": "Milwaukee", "MIN": "Minnesota", "NYM": "New York Mets",
+        "NYY": "New York Yankees", "OAK": "Oakland", "PHI": "Philadelphia",
+        "PIT": "Pittsburgh", "SD": "San Diego", "SEA": "Seattle",
+        "SF": "San Francisco", "STL": "St. Louis", "TB": "Tampa",
+        "TEX": "Texas", "TOR": "Toronto", "WSH": "Washington",
+    }
+    home_sub = _ABBR_TO_SUBSTR.get(home_abbr, home_abbr)
+    away_sub = _ABBR_TO_SUBSTR.get(away_abbr, away_abbr)
+    for event in events:
+        home_team = event.get("home_team", "")
+        away_team = event.get("away_team", "")
+        if home_sub in home_team and away_sub in away_team:
+            return event.get("id")
+    return None
+
+
 def is_available() -> bool:
     return bool(settings.odds_api_key)
 

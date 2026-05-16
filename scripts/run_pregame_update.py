@@ -33,7 +33,7 @@ from app.ingestion.mlb_stats_api import (
     ingest_boxscore,
     ingest_schedule,
 )
-from app.ingestion.odds_api import fetch_odds, is_available as odds_available
+from app.ingestion.odds_api import fetch_events, fetch_odds, match_event_id, is_available as odds_available
 from app.ingestion.venue_coords import get_coords
 from app.ingestion.weather_api import fetch_weather
 from app.models.entities import Player, Team
@@ -146,12 +146,49 @@ def _ingest_odds_and_weather(session, today_games: list, as_of: date) -> None:
                 captured_at=weather.captured_at,
             ))
 
-        # Odds — event_id not available from MLB API; skip for now unless mapped
-        if has_odds:
-            log.debug("Odds fetch for game %d skipped — event_id mapping not yet implemented.", game_id)
+        # Odds — resolve event_id via Odds API events list, then fetch
+        if has_odds and game.odds_event_id:
+            snapshots = fetch_odds(game_id, game.odds_event_id)
+            for snap in snapshots:
+                session.add(OddsSnapshotRow(
+                    game_id=game_id,
+                    bookmaker=snap.bookmaker,
+                    market=snap.market,
+                    selection=snap.selection,
+                    american_odds=snap.american_odds,
+                    line=snap.line,
+                    captured_at=snap.captured_at,
+                ))
+            if snapshots:
+                log.info("Saved %d odds snapshots for game %d.", len(snapshots), game_id)
 
     session.flush()
     log.info("Weather snapshots saved for %d games.", len(today_games))
+
+
+def _map_odds_event_ids(session, as_of: date) -> None:
+    """Fetch Odds API events for today and store event_ids on Game rows."""
+    events = fetch_events(as_of)
+    if not events:
+        log.info("No Odds API events returned for %s.", as_of)
+        return
+    games = session.execute(
+        select(Game).where(Game.game_date == as_of)
+    ).scalars().all()
+    mapped = 0
+    for game in games:
+        if game.odds_event_id:
+            continue
+        home_team = session.get(Team, game.home_team_id)
+        away_team = session.get(Team, game.away_team_id)
+        if not home_team or not away_team:
+            continue
+        event_id = match_event_id(events, home_team.abbr, away_team.abbr)
+        if event_id:
+            game.odds_event_id = event_id
+            mapped += 1
+    session.flush()
+    log.info("Mapped odds event_ids for %d/%d games.", mapped, len(games))
 
 
 def _ingest_completed_games(session, client: MLBStatsClient, yesterday: date) -> int:
@@ -186,6 +223,10 @@ def run(as_of: date, dry_run: bool = False) -> None:
             # 1. Fetch today's schedule so probable pitchers are populated.
             today_pks = ingest_schedule(session, client, as_of)
             log.info("Fetched %d games for %s", len(today_pks), as_of)
+
+            # 1b. Map Odds API event_ids to today's games (requires key).
+            if odds_available():
+                _map_odds_event_ids(session, as_of)
 
             # 2. Ingest completed games from yesterday.
             if not dry_run:

@@ -32,6 +32,7 @@ class Game(Base):
     game_number: Mapped[int] = mapped_column(default=1)
     home_probable_starter_id: Mapped[Optional[int]] = mapped_column(ForeignKey("players.id"))
     away_probable_starter_id: Mapped[Optional[int]] = mapped_column(ForeignKey("players.id"))
+    odds_event_id: Mapped[Optional[str]] = mapped_column(String(64))  # The Odds API event id
 
 
 class TeamGameLog(Base):

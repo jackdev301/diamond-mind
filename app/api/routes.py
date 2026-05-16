@@ -1,8 +1,8 @@
-"""FastAPI routes — data query layer for the Streamlit dashboard.
+"""FastAPI routes — data query layer for the web frontend.
 
 All endpoints are read-only. They query the DB via Track A's form helpers
-and return dataclass-compatible JSON. The Streamlit frontend (Track B)
-consumes these instead of directly importing ORM models.
+and return dataclass-compatible JSON. The Next.js/React frontend (Track B)
+consumes these via HTTP.
 
 Run with:
     uvicorn app.api.routes:app --reload --port 8000
@@ -15,6 +15,7 @@ from datetime import date
 from typing import List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -36,6 +37,14 @@ app = FastAPI(
     title="diamond-mind API",
     description="Data query layer for the MLB intelligence system.",
     version="0.1.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 

@@ -90,5 +90,5 @@ export const api = {
     get<BullpenData>(`/teams/${teamId}/bullpen?date=${date}`),
   pitcher: (id: number) => get<PitcherForm>(`/pitchers/${id}/form`),
   polishReport: (markdown: string) =>
-    post<{ polished: string }>("/report/polish", { markdown }),
+    post<{ markdown: string; polished: boolean; method: "sdk" | "cli" | "none" }>("/report/polish", { markdown }),
 };

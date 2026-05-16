@@ -593,8 +593,41 @@ def game_weather(game_id: int, db: Session = Depends(_get_db)):
 # Game Analysis — algorithmic betting intelligence
 # ---------------------------------------------------------------------------
 
+def _estimated_woba_for_team(db: Session, *, team_id: int, as_of: date) -> Optional[float]:
+    """Compute estimated wOBA from L10 batting logs for use in game analysis."""
+    bounds = _last_team_game_dates(db, team_id=team_id, window=WindowKey.L10, as_of=as_of)
+    if bounds is None:
+        return None
+    start, end = bounds
+    rows = db.execute(
+        select(PlayerGameLog).where(
+            PlayerGameLog.team_id == team_id,
+            PlayerGameLog.game_date >= start,
+            PlayerGameLog.game_date <= end,
+        )
+    ).scalars().all()
+    if not rows:
+        return None
+    walks = sum(r.walks for r in rows)
+    hbp = sum(r.hit_by_pitch for r in rows)
+    hits = sum(r.hits for r in rows)
+    doubles = sum(r.doubles for r in rows)
+    triples = sum(r.triples for r in rows)
+    home_runs = sum(r.home_runs for r in rows)
+    ab = sum(r.at_bats for r in rows)
+    sac_flies = sum(r.sac_flies for r in rows)
+    singles = hits - doubles - triples - home_runs
+    denom = ab + walks + hbp + sac_flies
+    return _safe_rate(
+        0.69 * walks + 0.72 * hbp + 0.89 * singles
+        + 1.27 * doubles + 1.62 * triples + 2.10 * home_runs,
+        denom,
+    )
+
+
 def _build_analysis(game_id: int, as_of: date, db: Session):
     """Load all data for a game and return a GameAnalysis dataclass."""
+    import dataclasses
     from sqlalchemy import desc
     from app.betting.game_analyzer import analyze_game
     from app.models.odds import WeatherSnapshotRow
@@ -624,6 +657,13 @@ def _build_analysis(game_id: int, as_of: date, db: Session):
         w = load_team_form_window(db, team_id=team_id, window=WindowKey.L10, as_of_date=as_of)
         if w is None:
             w = build_team_form_window(db, team_id=team_id, window=WindowKey.L10, as_of_date=as_of)
+        if w is None:
+            return None
+        # Inject estimated wOBA from batting logs if team_woba not already set
+        if w.team_woba is None:
+            woba = _estimated_woba_for_team(db, team_id=team_id, as_of=as_of)
+            if woba is not None:
+                w = dataclasses.replace(w, team_woba=woba)
         return w
 
     # Weather — best available snapshot

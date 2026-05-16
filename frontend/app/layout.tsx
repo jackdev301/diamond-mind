@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
 
-const FONTS_URL = "https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500&family=JetBrains+Mono:wght@400;500;600&display=swap";
+const FONTS_URL = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap";
 
 export const metadata: Metadata = {
   title: "Diamond Mind",
@@ -21,22 +21,26 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <nav style={{
           borderBottom: "1px solid var(--border)",
           padding: "0 24px",
-          height: "48px",
+          height: "52px",
           display: "flex",
           alignItems: "center",
-          gap: "32px",
+          gap: "24px",
           background: "var(--surface)",
+          position: "sticky",
+          top: 0,
+          zIndex: 100,
         }}>
           <span style={{
-            fontFamily: "var(--font-display)",
-            fontWeight: 800,
-            fontSize: "18px",
-            letterSpacing: "0.05em",
-            color: "var(--amber)",
-            textTransform: "uppercase",
+            fontFamily: "var(--font-ui)",
+            fontWeight: 700,
+            fontSize: "15px",
+            color: "var(--text)",
+            letterSpacing: "-0.02em",
+            marginRight: "8px",
           }}>
-            ◆ Diamond Mind
+            Diamond Mind
           </span>
+          <div style={{ width: "1px", height: "16px", background: "var(--border-2)" }} />
           {[
             { href: "/", label: "Slate" },
             { href: "/picks", label: "Picks" },
@@ -44,17 +48,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             { href: "/verify", label: "Verifier" },
           ].map(({ href, label }) => (
             <Link key={href} href={href} className="nav-link" style={{
-              fontFamily: "var(--font-display)",
-              fontWeight: 600,
+              fontFamily: "var(--font-ui)",
+              fontWeight: 500,
               fontSize: "13px",
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
             }}>
               {label}
             </Link>
           ))}
         </nav>
-        <main style={{ maxWidth: "1200px", margin: "0 auto", padding: "32px 24px" }}>
+        <main style={{ maxWidth: "1120px", margin: "0 auto", padding: "28px 24px" }}>
           {children}
         </main>
       </body>

@@ -1,75 +1,106 @@
 @import "tailwindcss";
 
 :root {
-  --bg:        #090B0E;
-  --surface:   #111419;
-  --surface-2: #181C23;
-  --border:    #1F242D;
-  --border-2:  #2A3040;
-  --text:      #EDE9E1;
-  --text-2:    #6B7585;
-  --text-3:    #3D4555;
-  --amber:     #F0A500;
-  --green:     #2DBE6C;
-  --orange:    #F07020;
-  --red:       #E03535;
-  --font-display: 'Barlow Condensed', sans-serif;
-  --font-body:    'Barlow', sans-serif;
-  --font-mono:    'JetBrains Mono', monospace;
+  /* Base palette — blue-slate data terminal */
+  --bg:        #0A0E14;
+  --surface:   #111926;
+  --surface-2: #182030;
+  --border:    #1E2837;
+  --border-2:  #2A3A50;
+
+  /* Text hierarchy */
+  --text:      #E2E8F0;
+  --text-2:    #64748B;
+  --text-3:    #334155;
+
+  /* Signal colors */
+  --blue:      #3B82F6;
+  --green:     #10B981;
+  --amber:     #F59E0B;
+  --orange:    #F97316;
+  --red:       #EF4444;
+
+  /* Typography — Inter for UI, JetBrains Mono for data */
+  --font-ui:   'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Mono', monospace;
+
+  /* Keep legacy aliases so existing pages don't break */
+  --font-display: var(--font-ui);
+  --font-body:    var(--font-ui);
 }
 
 @theme inline {
   --color-background: var(--bg);
   --color-foreground: var(--text);
-  --font-sans: var(--font-body);
+  --font-sans: var(--font-ui);
   --font-mono: var(--font-mono);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html { -webkit-font-smoothing: antialiased; }
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
 }
 
-/* ── Bar animation ─────────────────────────────── */
+/* ── Data bar ──────────────────────────────────── */
 @keyframes fillBar {
   from { width: 0; }
   to   { width: var(--fill); }
 }
 .stat-bar-track {
   background: var(--border);
-  border-radius: 2px;
+  border-radius: 1px;
   height: 3px;
   overflow: hidden;
 }
 .stat-bar-fill {
   height: 100%;
-  border-radius: 2px;
   width: 0;
-  animation: fillBar 0.6s cubic-bezier(0.4,0,0.2,1) forwards;
+  animation: fillBar 0.5s cubic-bezier(0.4,0,0.2,1) forwards;
   animation-delay: var(--delay, 0ms);
 }
 
-/* ── Fade up stagger ───────────────────────────── */
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+/* ── Fade in (subtle, no transform) ───────────── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 .fade-up {
   opacity: 0;
-  animation: fadeUp 0.35s ease forwards;
+  animation: fadeIn 0.2s ease forwards;
   animation-delay: var(--delay, 0ms);
 }
 
-/* ── Card hover lift ───────────────────────────── */
-.game-card { transition: border-color 0.15s ease, transform 0.15s ease; }
-.game-card:hover { transform: translateY(-1px); }
+/* ── Card ─────────────────────────────────────── */
+.game-card {
+  transition: border-color 0.12s ease;
+  cursor: pointer;
+}
+.game-card:hover { border-color: var(--border-2) !important; }
 
-/* ── Nav link hover ─────────────────────────────── */
-.nav-link { color: var(--text-2); text-decoration: none; transition: color 0.15s; }
+/* ── Nav link ─────────────────────────────────── */
+.nav-link { color: var(--text-2); text-decoration: none; transition: color 0.12s; }
 .nav-link:hover { color: var(--text); }
+.nav-link.active { color: var(--text); }
+
+/* ── Utility: monospace data cell ─────────────── */
+.data { font-family: var(--font-mono); font-size: 12px; font-weight: 500; }
+
+/* ── Tier badge ───────────────────────────────── */
+.tier-badge {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border-radius: 4px;
+  padding: 3px 8px;
+  border: 1px solid currentColor;
+}

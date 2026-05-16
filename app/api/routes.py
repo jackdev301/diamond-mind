@@ -18,6 +18,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
+from sqlalchemy.orm import aliased
 from sqlalchemy.orm import Session
 
 from app.contracts import WindowKey
@@ -80,27 +81,36 @@ def health():
 
 @app.get("/games")
 def list_games(
-    game_date: date = Query(..., alias="date", description="YYYY-MM-DD"),
+    game_date: date = Query(..., description="YYYY-MM-DD"),
     db: Session = Depends(_get_db),
 ):
-    """Return all games scheduled for a date."""
+    """Return all games scheduled for a date, including team abbreviations."""
+    from app.models.entities import Team as TeamModel
+    HomeTeam = aliased(TeamModel)
+    AwayTeam = aliased(TeamModel)
     rows = db.execute(
-        select(Game).where(Game.game_date == game_date)
-    ).scalars().all()
+        select(Game, HomeTeam, AwayTeam)
+        .join(HomeTeam, Game.home_team_id == HomeTeam.id)
+        .join(AwayTeam, Game.away_team_id == AwayTeam.id)
+        .where(Game.game_date == game_date)
+        .order_by(Game.id)
+    ).all()
     return [
         {
             "game_id": g.id,
             "game_date": g.game_date.isoformat(),
             "status": g.status,
             "home_team_id": g.home_team_id,
+            "home_team_abbr": home.abbr,
             "away_team_id": g.away_team_id,
+            "away_team_abbr": away.abbr,
             "venue": g.venue,
             "is_doubleheader": g.is_doubleheader,
             "game_number": g.game_number,
             "home_probable_starter_id": g.home_probable_starter_id,
             "away_probable_starter_id": g.away_probable_starter_id,
         }
-        for g in rows
+        for g, home, away in rows
     ]
 
 

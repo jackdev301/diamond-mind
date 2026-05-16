@@ -22,8 +22,9 @@ def poll(url: str, interval: int) -> None:
             with urllib.request.urlopen(f"{url}/messages?since={last_id}", timeout=5) as r:
                 msgs = json.loads(r.read())
             for m in msgs:
-                print(f"[{m['at']}] {m['from']}: {m['message']}", flush=True)
                 last_id = max(last_id, m["id"])
+                if m["from"] != "jack":
+                    print(f"[{m['at']}] {m['from']}: {m['message']}", flush=True)
         except urllib.error.URLError:
             print("[poller] server not reachable, retrying...", flush=True)
         time.sleep(interval)

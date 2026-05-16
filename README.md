@@ -1,112 +1,135 @@
 # diamond-mind
 
-AI-native baseball intelligence system. Generates a daily MLB intelligence report from structured data — recent form, bullpen fatigue & quality, betting market verification, Obsidian markdown export.
+AI-native baseball intelligence system. Generates a daily MLB pregame report — recent form, bullpen fatigue & vulnerability, weather, betting market verification — served through a React web dashboard with optional Claude polish.
 
-> **Not a chatbot. Not a pick bot.** A probabilistic decision-support tool. See the responsible-use note at the bottom.
-
-The canonical project vision lives in [`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRIEF.md). Collaboration protocol lives under [`docs/collab/`](docs/collab/).
+> **Not a pick bot.** A probabilistic decision-support tool that uses cautious language tiers (Strong Lean / Lean / Pass / Avoid / Need More Info). "Lock", "guaranteed", and "hammer" are forbidden by design.
 
 ---
 
-## Status
-
-| Phase | Scope | Status |
-|------:|-------|--------|
-| 1 | Inspect repo + plan | done |
-| 2 | Skeleton, config, contracts, smoke tests | done |
-| 3 | Database models | done |
-| 4 | Betting utilities | next (Track B) |
-| 5 | Recent form engine | done |
-| 6 | Bullpen intelligence | Track B |
-| 7 | MLB Stats API ingestion | Track A |
-| 8 | Odds / weather clients | Track B |
-| 9 | Daily report generator | Track B |
-| 10 | Obsidian export | Track B |
-| 11 | CLI scripts | both |
-| 12 | LLM polish (optional) | later |
-
-## What the MVP will support
-
-- Daily Markdown intelligence report covering today's MLB slate.
-- Recent form windows: Season / L20 / L10 / L5 for hitters & teams; L10/L5 starts for starters; L20/L10/L5 appearances for relievers.
-- Bullpen intelligence: fatigue, overall quality, available quality (after accounting for tired arms), vulnerability.
-- Betting market verification: American-odds → implied probability, edge calc, cautious recommendation tiers (Strong Lean / Lean / Pass / Avoid / Need More Info).
-- Obsidian vault export for human-readable research notes.
-
-## What is planned later
-
-Streamlit dashboard, FastAPI routes, chatbot follow-up, postgame evaluation grading, logistic regression / elastic-net probability model, XGBoost experiments, historical odds backtesting, richer injury/news ingestion.
-
-## Setup
-
-Python 3.11+ required.
+## Quick start
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+git clone https://github.com/jackdev301/diamond-mind.git
+cd diamond-mind
+
+python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-cp .env.example .env   # fill in keys you have; missing keys are OK
-pytest                 # smoke tests should pass
+
+cp .env.example .env          # fill in keys you have; missing keys degrade gracefully
+python scripts/init_db.py     # create tables
+python scripts/backfill_history.py --days 30   # seed historical data
+python scripts/run_pregame_update.py           # fetch today's schedule + weather
+
+uvicorn app.api.routes:app --reload --port 8000 &   # API at localhost:8000
+cd frontend && npm install && npm run dev            # UI at localhost:3000
 ```
 
-## Tooling decisions
+See [docs/SETUP.md](docs/SETUP.md) for the full walkthrough.
 
-See [`docs/collab/decisions/`](docs/collab/decisions/). Currently: `pip` + `pyproject.toml`, SQLite for local dev.
+---
 
-## Initializing the database
+## What's built
 
-```bash
-python scripts/init_db.py            # idempotent; creates missing tables
-python scripts/init_db.py --drop     # destructive: drops everything first
+### Data platform (Track A)
+
+| Component | Location | Description |
+|-----------|----------|-------------|
+| DB models | `app/models/` | 17 SQLAlchemy tables — teams, players, games, game logs, form windows, bullpen, odds, weather, reports |
+| Recent form engine | `app/features/recent_form.py` | Season / L20 / L10 / L5 windows for hitters & teams; L10/L5 starts for starters; L20/L10/L5 for relievers. Trend classifier, weighted metric, `build_bullpen_state()` |
+| MLB ingestion | `app/ingestion/mlb_stats_api.py` | Schedule, teams, rosters, box scores — idempotent upserts via MLB Stats API (no key needed) |
+| Odds ingestion | `app/ingestion/odds_api.py` | The Odds API — moneyline, spread, total. Event-ID matching to MLB game PKs. Skips gracefully without key |
+| Weather ingestion | `app/ingestion/weather_api.py` | Open-Meteo (no key needed). Dome detection. Lat/lon for all 30 venues in `venue_coords.py` |
+| Daily update | `scripts/run_pregame_update.py` | Full orchestration: schedule → box scores → form windows → bullpen states → weather → odds |
+| Backfill | `scripts/backfill_history.py` | Seeds historical game logs for any date range |
+| FastAPI | `app/api/routes.py` | Read-only JSON API consumed by the frontend |
+| LLM polish | `app/llm/claude_client.py` | Two-tier: Anthropic SDK key → `claude -p` CLI fallback → raw |
+
+### Analysis & output (Track B)
+
+| Component | Location | Description |
+|-----------|----------|-------------|
+| Bullpen engine | `app/features/bullpen_*.py` | Fatigue scoring, quality rating, vulnerability (0–100) |
+| Betting utils | `app/betting/` | Implied probability, edge calc, recommendation tiers |
+| Odds/weather clients | `app/ingestion/odds_api.py`, `weather_api.py` | Graceful stubs when keys missing |
+| Report generator | `app/reports/daily_report.py` | Deterministic markdown — starters, bullpen, form, odds, weather |
+| Obsidian export | `app/obsidian/` | Wiki-linked vault notes per game, bullpen, daily report |
+| React frontend | `frontend/` | Next.js — Slate, Game Detail, Report Viewer, Bet Verifier |
+
+---
+
+## API reference
+
+Base URL: `http://localhost:8000` — interactive docs at `/docs`.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/games?game_date=YYYY-MM-DD` | Games for a date |
+| GET | `/games/{id}/bundle?as_of=YYYY-MM-DD` | Full composite — form, starters, bullpen, in one call |
+| GET | `/games/{id}/odds` | Latest odds snapshots |
+| GET | `/games/{id}/weather` | Latest weather snapshot |
+| GET | `/teams` | All teams |
+| GET | `/teams/{id}/form?window=l10&as_of=YYYY-MM-DD` | Team form window |
+| GET | `/teams/{id}/bullpen?as_of=YYYY-MM-DD` | BullpenState |
+| GET | `/players/{id}/form?window=l10&as_of=YYYY-MM-DD` | Hitter form window |
+| GET | `/pitchers/{id}/form?window=last_5_starts&as_of=YYYY-MM-DD` | Starter form window |
+| POST | `/report/polish` | Claude polish pass → `{markdown, polished, method}` |
+
+---
+
+## Frontend pages
+
+| Page | Route | Description |
+|------|-------|-------------|
+| Slate | `/` | Date-picker, game cards with bullpen vulnerability colour coding |
+| Game Detail | `/game/[id]` | Starters, bullpen intel, weather conditions |
+| Daily Report | `/report` | Full markdown report + Polish with Claude (SDK / CLI / Raw badge) |
+| Bet Verifier | `/verify` | Client-side implied probability + edge calculator |
+
+---
+
+## Keys & degradation
+
+| Key | Used for | Without it |
+|-----|----------|-----------|
+| `ANTHROPIC_API_KEY` | SDK polish | Falls back to `claude -p` CLI, then raw report |
+| `ODDS_API_KEY` | Live odds | Odds section hidden; everything else works |
+| `MLB_STATS_API_BASE` | Game data | Defaults to public statsapi.mlb.com (no key needed) |
+
+Weather uses Open-Meteo — no key required.
+
+---
+
+## Repo layout
+
 ```
-
-17 tables are created — see `app/models/__init__.py` for the full list. The DB path comes from `DATABASE_URL` in `.env` (defaults to `sqlite:///./diamond_mind.db`).
-
-## Running the daily report
-
-*Not yet implemented — lands in Phase 9.* Will be:
-
-```bash
-python scripts/run_daily_report.py --date 2026-05-15
-```
-
-The script will compute features, verify markets, and write a markdown report to `obsidian_vault/Reports/Daily/YYYY-MM-DD.md`.
-
-## How Obsidian export works
-
-*Lands in Phase 10.* The database is the source of truth; Obsidian is the human-readable memory layer. The exporter writes daily reports, per-game notes, bullpen pages, and bet evaluation notes using wiki-style links (`[[Phillies]]`, `[[Zack Wheeler]]`) so the vault becomes a navigable research graph.
-
-## Interpreting betting outputs
-
-Every bet evaluation includes implied probability, estimated probability, edge, confidence score, supporting/opposing factors, uncertainty flags, and a "what would change the answer" line. Recommendations are tiered as:
-
-- **Strong Lean** — meaningful edge + high evidence quality
-- **Lean** — modest edge or moderate confidence
-- **Pass** — no edge or mixed signals
-- **Avoid** — negative edge or red flags
-- **Need More Info** — insufficient data quality
-
-Language like "lock", "guaranteed", or "must bet" is forbidden by design.
-
-## Repo layout (current)
-
-```
-app/             # core Python package (config, db, contracts, modules per phase)
+app/
+  config.py          # pydantic-settings, DATABASE_URL, API keys
+  contracts.py       # frozen dataclasses — the Track A/B seam
+  database.py        # SQLAlchemy engine + session
+  models/            # 17 ORM tables
+  features/          # recent_form, bullpen_fatigue/quality/vulnerability
+  ingestion/         # mlb_stats_api, odds_api, weather_api, venue_coords
+  betting/           # edge_calculator, implied_probability
+  reports/           # daily_report generator
+  obsidian/          # vault_writer, note_templates, link_utils
+  llm/               # claude_client (polish)
+  api/               # FastAPI routes
+scripts/
+  init_db.py         # idempotent table creation
+  run_pregame_update.py
+  backfill_history.py
+  collab_server.py   # dev-only inter-agent relay
+frontend/            # Next.js app
+tests/               # 49 pytest tests + JSON fixtures
 docs/
-  PROJECT_BRIEF.md           # canonical vision
-  collab/                    # cross-track coordination
-    tracks/                  # per-owner scope and status
-    interfaces/              # contracts between tracks
-    handoffs/                # dated async messages
-    decisions/               # ADR-style records
-scripts/         # CLI entry points
-tests/           # pytest suite + fixtures
-obsidian_vault/  # exported markdown (gitignored content, folders tracked)
-data/            # raw / processed / exports (gitignored content)
+  PROJECT_BRIEF.md   # canonical vision and formulas
+  SETUP.md           # full setup walkthrough
+  collab/            # cross-track coordination (handoffs, interfaces, decisions)
+obsidian_vault/      # exported markdown (content gitignored, folders tracked)
 ```
 
-## Limitations & responsible-use note
+---
 
-diamond-mind provides probabilistic baseball analysis and market verification. It does not guarantee betting outcomes and should not be treated as financial advice. The MVP uses rule-based probability estimates — there is no trained predictive model yet. Use the outputs as one input among many; never as a "lock."
+## Responsible-use note
 
-If you bet, do so at amounts you can afford to lose and within whatever responsible-gambling guardrails apply in your jurisdiction.
+diamond-mind provides probabilistic baseball analysis and market verification. It does not guarantee outcomes and is not financial advice. The MVP uses rule-based estimates — there is no trained predictive model. Use outputs as one input among many, never as a certainty signal. If you bet, do so responsibly and within your jurisdiction's guidelines.

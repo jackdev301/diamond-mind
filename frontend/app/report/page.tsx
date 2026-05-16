@@ -43,9 +43,9 @@ export default function ReportPage() {
   async function loadReport(d = date) {
     setMarkdown(null); setPolishedText(null); setMethod(null); setError(null); setLoading(true);
     try {
-      const res = await fetch(`/api/report?date=${d}`);
-      if (!res.ok) throw new Error("not found");
-      setMarkdown(await res.text());
+      const md = await api.reportMarkdown(d);
+      if (md === null) throw new Error("not found");
+      setMarkdown(md);
     } catch {
       setError(`No report for ${d}. Run: python scripts/run_daily_report.py`);
     } finally {

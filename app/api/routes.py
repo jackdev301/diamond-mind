@@ -1394,6 +1394,25 @@ def slate(
 # ---------------------------------------------------------------------------
 
 
+@app.get("/report", tags=["reports"])
+def get_report(date: str = Query(..., description="YYYY-MM-DD")):
+    """Serve the generated daily report markdown for a date.
+
+    Reads obsidian_vault/Reports/Daily/{date}.md (written by
+    scripts/run_daily_report.py). 404 if it hasn't been generated yet.
+    """
+    from pathlib import Path
+    from fastapi.responses import PlainTextResponse
+
+    repo_root = Path(__file__).resolve().parents[2]
+    report_path = repo_root / "obsidian_vault" / "Reports" / "Daily" / f"{date}.md"
+    if not report_path.is_file():
+        raise HTTPException(
+            404, f"No report for {date}. Run: python scripts/run_daily_report.py"
+        )
+    return PlainTextResponse(report_path.read_text(encoding="utf-8"))
+
+
 @app.post("/report/polish", tags=["reports"])
 def polish_report_endpoint(body: dict):
     """Polish a raw Markdown report with Claude.

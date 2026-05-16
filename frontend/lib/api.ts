@@ -215,6 +215,15 @@ export const api = {
     get<TeamBatting>(`/teams/${teamId}/batting?as_of=${date}&window=l10`),
   context: (gameId: number, asOf: string) =>
     get<GameContext>(`/games/${gameId}/context?as_of=${asOf}`),
+  reportMarkdown: async (date: string): Promise<string | null> => {
+    try {
+      const res = await fetch(`${API}/report?date=${date}`);
+      if (!res.ok) return null;
+      return res.text();
+    } catch {
+      return null;
+    }
+  },
   quantVerify: (modelProb: number, sideOdds: number, otherOdds: number, evidence: number) =>
     get<QuantVerify>(
       `/quant/verify?model_prob=${modelProb}&side_odds=${sideOdds}&other_odds=${otherOdds}&evidence_quality=${evidence}`,

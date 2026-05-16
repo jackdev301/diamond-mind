@@ -31,6 +31,7 @@ from app.features.recent_form import (
     load_hitter_form_window,
     load_team_form_window,
 )
+from app.features.bullpen_vulnerability import score_bullpen
 from app.models.entities import Team
 from app.models.games import Game
 
@@ -240,10 +241,14 @@ def game_bundle(
 
     def _bullpen(team_id: int):
         state = build_bullpen_state(db, team_id=team_id, as_of_date=as_of)
-        return _dc(state)
+        if state is None:
+            return None
+        return _dc(score_bullpen(state))
 
     home_id = game.home_team_id
     away_id = game.away_team_id
+    home_team = db.get(Team, home_id)
+    away_team = db.get(Team, away_id)
 
     return {
         "game_id": game_id,
@@ -252,6 +257,8 @@ def game_bundle(
         "venue": game.venue,
         "home_team_id": home_id,
         "away_team_id": away_id,
+        "home_team_abbr": home_team.abbr if home_team else None,
+        "away_team_abbr": away_team.abbr if away_team else None,
         "is_doubleheader": game.is_doubleheader,
         "game_number": game.game_number,
         "home_form": {

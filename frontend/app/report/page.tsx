@@ -3,16 +3,10 @@
 import { useState } from "react";
 import { api } from "@/lib/api";
 
-const METHOD_LABEL: Record<string, string> = {
-  sdk: "AI-Polished (SDK)",
-  cli: "AI-Polished (CLI)",
-  none: "Raw",
-};
-
-const METHOD_COLOR: Record<string, string> = {
-  sdk: "bg-indigo-900 text-indigo-300",
-  cli: "bg-purple-900 text-purple-300",
-  none: "bg-gray-800 text-gray-400",
+const METHOD_STYLE: Record<string, { label: string; color: string }> = {
+  sdk:  { label: "AI · SDK",  color: "var(--green)" },
+  cli:  { label: "AI · CLI",  color: "var(--amber)" },
+  none: { label: "Raw",       color: "var(--text-2)" },
 };
 
 export default function ReportPage() {
@@ -29,10 +23,9 @@ export default function ReportPage() {
     try {
       const res = await fetch(`/api/report?date=${date}`);
       if (!res.ok) throw new Error("not found");
-      const text = await res.text();
-      setMarkdown(text);
+      setMarkdown(await res.text());
     } catch {
-      setError(`No report found for ${date}. Run: python scripts/run_daily_report.py`);
+      setError(`No report for ${date}. Run: python scripts/run_daily_report.py`);
     }
   }
 
@@ -41,7 +34,7 @@ export default function ReportPage() {
     setPolishing(true);
     const result = await api.polishReport(markdown);
     if (!result) {
-      setError("Polish failed — check that ANTHROPIC_API_KEY is set or Claude Code is installed");
+      setError("Polish failed — check ANTHROPIC_API_KEY or Claude CLI install");
     } else {
       setPolishedText(result.markdown);
       setMethod(result.method);
@@ -50,36 +43,56 @@ export default function ReportPage() {
   }
 
   const displayText = polishedText ?? markdown;
+  const methodMeta = method ? (METHOD_STYLE[method] ?? METHOD_STYLE.none) : null;
 
   return (
     <div>
-      <div className="flex items-center gap-4 mb-6 flex-wrap">
-        <h1 className="text-2xl font-bold">Daily Report</h1>
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
-          className="bg-gray-900 border border-gray-700 rounded px-3 py-1 text-sm" />
-        <button onClick={loadReport}
-          className="bg-gray-800 hover:bg-gray-700 px-4 py-1 rounded text-sm transition-colors">
+      <div style={{ display: "flex", alignItems: "center", gap: "16px", borderBottom: "1px solid var(--border)", paddingBottom: "16px", marginBottom: "24px", flexWrap: "wrap" }}>
+        <h1 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "32px", letterSpacing: "0.03em", textTransform: "uppercase", margin: 0 }}>
+          Daily Report
+        </h1>
+        <input
+          type="date" value={date}
+          onChange={e => setDate(e.target.value)}
+          style={{ background: "var(--surface)", border: "1px solid var(--border-2)", borderRadius: "4px", padding: "6px 10px", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: "12px" }}
+        />
+        <button
+          onClick={loadReport}
+          style={{ background: "var(--surface-2)", border: "1px solid var(--border-2)", borderRadius: "4px", padding: "6px 14px", color: "var(--text)", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "12px", letterSpacing: "0.06em", textTransform: "uppercase", cursor: "pointer" }}
+        >
           Load
         </button>
         {markdown && (
-          <button onClick={polish} disabled={polishing}
-            className="bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 px-4 py-1 rounded text-sm transition-colors">
-            {polishing ? "Polishing..." : "Polish with Claude"}
+          <button
+            onClick={polish} disabled={polishing}
+            style={{ background: polishing ? "var(--border)" : "var(--amber)", border: "none", borderRadius: "4px", padding: "6px 14px", color: polishing ? "var(--text-2)" : "var(--bg)", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "12px", letterSpacing: "0.06em", textTransform: "uppercase", cursor: polishing ? "not-allowed" : "pointer", transition: "background 0.15s" }}
+          >
+            {polishing ? "Polishing…" : "Polish with Claude"}
           </button>
         )}
-        {method && (
-          <span className={`text-xs px-2 py-1 rounded font-medium ${METHOD_COLOR[method] ?? METHOD_COLOR.none}`}>
-            {METHOD_LABEL[method] ?? method}
+        {methodMeta && (
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: methodMeta.color, border: `1px solid ${methodMeta.color}`, borderRadius: "3px", padding: "2px 8px", opacity: 0.85 }}>
+            {methodMeta.label}
           </span>
         )}
       </div>
 
-      {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+      {error && (
+        <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--orange)", padding: "12px", border: "1px solid var(--orange)", borderRadius: "4px", marginBottom: "16px" }}>
+          {error}
+        </div>
+      )}
 
       {displayText ? (
-        <pre className="whitespace-pre-wrap text-sm text-gray-200 bg-gray-900 rounded-lg p-4 leading-relaxed">{displayText}</pre>
+        <pre style={{ whiteSpace: "pre-wrap", fontFamily: "var(--font-mono)", fontSize: "12px", lineHeight: 1.7, color: "var(--text)", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "6px", padding: "24px" }}>
+          {displayText}
+        </pre>
       ) : (
-        !error && <p className="text-gray-500 text-sm">Select a date and click Load.</p>
+        !error && (
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-3)", padding: "40px 0", textAlign: "center" }}>
+            Select a date and click Load.
+          </div>
+        )
       )}
     </div>
   );

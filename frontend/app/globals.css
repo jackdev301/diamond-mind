@@ -1,26 +1,72 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg:        #090B0E;
+  --surface:   #111419;
+  --surface-2: #181C23;
+  --border:    #1F242D;
+  --border-2:  #2A3040;
+  --text:      #EDE9E1;
+  --text-2:    #6B7585;
+  --text-3:    #3D4555;
+  --amber:     #F0A500;
+  --green:     #2DBE6C;
+  --orange:    #F07020;
+  --red:       #E03535;
+  --font-display: 'Barlow Condensed', sans-serif;
+  --font-body:    'Barlow', sans-serif;
+  --font-mono:    'JetBrains Mono', monospace;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-font-smoothing: antialiased; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
 }
+
+/* ── Bar animation ─────────────────────────────── */
+@keyframes fillBar {
+  from { width: 0; }
+  to   { width: var(--fill); }
+}
+.stat-bar-track {
+  background: var(--border);
+  border-radius: 2px;
+  height: 3px;
+  overflow: hidden;
+}
+.stat-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  width: 0;
+  animation: fillBar 0.6s cubic-bezier(0.4,0,0.2,1) forwards;
+  animation-delay: var(--delay, 0ms);
+}
+
+/* ── Fade up stagger ───────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-up {
+  opacity: 0;
+  animation: fadeUp 0.35s ease forwards;
+  animation-delay: var(--delay, 0ms);
+}
+
+/* ── Card hover lift ───────────────────────────── */
+.game-card { transition: border-color 0.15s ease, transform 0.15s ease; }
+.game-card:hover { transform: translateY(-1px); }

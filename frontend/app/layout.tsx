@@ -10,14 +10,51 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-gray-950 text-gray-100 antialiased">
-        <nav className="border-b border-gray-800 px-6 py-3 flex items-center gap-6">
-          <span className="font-bold text-lg tracking-tight">⚾ Diamond Mind</span>
-          <Link href="/" className="text-sm text-gray-400 hover:text-white transition-colors">Slate</Link>
-          <Link href="/report" className="text-sm text-gray-400 hover:text-white transition-colors">Report</Link>
-          <Link href="/verify" className="text-sm text-gray-400 hover:text-white transition-colors">Bet Verifier</Link>
+      <body>
+        <nav style={{
+          borderBottom: "1px solid var(--border)",
+          padding: "0 24px",
+          height: "48px",
+          display: "flex",
+          alignItems: "center",
+          gap: "32px",
+          background: "var(--surface)",
+        }}>
+          <span style={{
+            fontFamily: "var(--font-display)",
+            fontWeight: 800,
+            fontSize: "18px",
+            letterSpacing: "0.05em",
+            color: "var(--amber)",
+            textTransform: "uppercase",
+          }}>
+            ◆ Diamond Mind
+          </span>
+          {[
+            { href: "/", label: "Slate" },
+            { href: "/report", label: "Report" },
+            { href: "/verify", label: "Verifier" },
+          ].map(({ href, label }) => (
+            <Link key={href} href={href} style={{
+              fontFamily: "var(--font-display)",
+              fontWeight: 600,
+              fontSize: "13px",
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "var(--text-2)",
+              textDecoration: "none",
+              transition: "color 0.15s",
+            }}
+            onMouseEnter={e => (e.currentTarget.style.color = "var(--text)")}
+            onMouseLeave={e => (e.currentTarget.style.color = "var(--text-2)")}
+            >
+              {label}
+            </Link>
+          ))}
         </nav>
-        <main className="max-w-6xl mx-auto px-6 py-8">{children}</main>
+        <main style={{ maxWidth: "1200px", margin: "0 auto", padding: "32px 24px" }}>
+          {children}
+        </main>
       </body>
     </html>
   );

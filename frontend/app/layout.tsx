@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import { NavLinks } from "./nav";
 import "./globals.css";
 
@@ -30,17 +31,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           top: 0,
           zIndex: 100,
         }}>
-          <span style={{
-            fontFamily: "var(--font-display)",
-            fontWeight: 800,
-            fontSize: "14px",
-            color: "var(--text)",
-            letterSpacing: "0.02em",
-            textTransform: "uppercase",
-            marginRight: "8px",
-          }}>
-            Diamond Mind
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginRight: "8px" }}>
+            <Image src="/logo.ico" alt="Diamond Mind" width={22} height={22} style={{ display: "block" }} />
+            <span style={{
+              fontFamily: "var(--font-display)",
+              fontWeight: 800,
+              fontSize: "14px",
+              color: "var(--text)",
+              letterSpacing: "0.02em",
+              textTransform: "uppercase",
+            }}>
+              Diamond Mind
+            </span>
+          </div>
           <div style={{ width: "1px", height: "16px", background: "var(--border-2)" }} />
           <NavLinks />
         </nav>

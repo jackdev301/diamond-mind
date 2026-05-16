@@ -91,6 +91,8 @@ export type GameAnalysis = {
   sp_advantage: string;
   bullpen_edge: string;
   offense_edge: string;
+  ml_american_odds: number;
+  implied_prob: number;
   // from picks endpoint
   game_date?: string;
   venue?: string;

@@ -157,9 +157,7 @@ export default function PicksPage() {
   }, [date]);
 
   function changeDate(d: string) {
-    setPicks(null);
-    setError(false);
-    setDate(d);
+    setPicks(null); setError(false); setDate(d);
   }
 
   const actionable = picks?.filter((p) => p.ml_tier === "STRONG LEAN" || p.ml_tier === "LEAN") ?? [];

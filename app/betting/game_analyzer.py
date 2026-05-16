@@ -71,17 +71,19 @@ class GameAnalysis:
     total_confidence: float
     projected_total: float      # projected combined runs
 
-    # Bet sizing (Kelly, vs -110 line)
+    # Bet sizing (Kelly vs actual line)
     ml_kelly_fraction: float    # fraction of bankroll to bet
+    ml_american_odds: int = -110  # actual line used for Kelly (default -110)
 
     # Factors
     key_factors: List[str] = field(default_factory=list)
     cautions: List[str] = field(default_factory=list)
 
     # Component breakdown (for transparency)
-    sp_advantage: str = ""      # "HOME +0.8 FIP" etc.
+    sp_advantage: str = ""
     bullpen_edge: str = ""
     offense_edge: str = ""
+    implied_prob: float = 0.5238  # implied probability of the line used
 
 
 # ── Kelly criterion ────────────────────────────────────────────────────────────
@@ -230,6 +232,13 @@ def analyze_game(
     home_form: Optional[TeamFormWindow],
     away_form: Optional[TeamFormWindow],
     weather: Optional[WeatherSnapshot],
+    home_ml_odds: Optional[int] = None,   # actual moneyline (e.g. -150, +130)
+    away_ml_odds: Optional[int] = None,
+    total_line: Optional[float] = None,   # posted O/U total (e.g. 8.5)
+    home_k_rate: Optional[float] = None,  # team strikeout rate (0-1) from batting
+    away_k_rate: Optional[float] = None,
+    home_iso: Optional[float] = None,     # team ISO from batting
+    away_iso: Optional[float] = None,
 ) -> GameAnalysis:
 
     factors: list[str] = []
@@ -269,22 +278,48 @@ def analyze_game(
             fip_val = _derive_fip(sp)
             if fip_val:
                 divergence = sp.era - fip_val
-                # ERA much lower than FIP → pitcher getting lucky, likely to regress
                 if divergence < -1.0:
                     cautions.append(
                         f"⚠ {side_label} SP ERA {sp.era:.2f} significantly below FIP {fip_val:.2f} — regression risk"
                     )
-                # ERA much higher than FIP → pitcher unlucky, likely to improve
                 elif divergence > 1.2:
                     factors.append(
                         f"{side_label} SP ERA ({sp.era:.2f}) above FIP ({fip_val:.2f}) — positive regression candidate"
                     )
 
+    # K% matchup edge — high-K pitcher vs high-strikeout team amplifies SP advantage
+    K_RATE_HIGH = 0.24   # team K% where pitcher K dominance is amplified
+    for sp, team_k_rate, side_label, opp_label in [
+        (home_sp, away_k_rate, "HOME", "AWAY"),
+        (away_sp, home_k_rate, "AWAY", "HOME"),
+    ]:
+        if sp and sp.k_per_9 and sp.k_per_9 >= 9.0 and team_k_rate and team_k_rate >= K_RATE_HIGH:
+            factors.append(
+                f"{side_label} SP strikeout pitcher ({sp.k_per_9:.1f} K/9) vs high-K% {opp_label} lineup ({team_k_rate:.1%}) — amplified edge"
+            )
+            adj = 0.012 if side_label == "HOME" else -0.012
+            prob += adj
+
+    # Short-start amplifier — if SP averages < 5 IP, bullpen matters more
+    for sp, bp, side_label in [(home_sp, home_bullpen, "HOME"), (away_sp, away_bullpen, "AWAY")]:
+        if sp and sp.avg_innings_per_start and sp.avg_innings_per_start < 5.0 and not sp.insufficient_sample:
+            cautions.append(
+                f"⚠ {side_label} SP averaging {sp.avg_innings_per_start:.1f} IP/start — heavy bullpen reliance expected"
+            )
+
     # 3. Bullpen vulnerability
     home_vuln = home_bullpen.vulnerability_score if home_bullpen else 50.0
     away_vuln = away_bullpen.vulnerability_score if away_bullpen else 50.0
     vuln_diff = away_vuln - home_vuln   # positive = home bullpen is better
-    bp_adj = vuln_diff * BULLPEN_VULN_SCALE
+
+    # Amplify bullpen weight when starter is short (< 5.5 IP avg)
+    bp_scale = BULLPEN_VULN_SCALE
+    if home_sp and home_sp.avg_innings_per_start and home_sp.avg_innings_per_start < 5.5:
+        bp_scale *= 1.4
+    elif away_sp and away_sp.avg_innings_per_start and away_sp.avg_innings_per_start < 5.5:
+        bp_scale *= 1.4
+
+    bp_adj = vuln_diff * bp_scale
     prob += bp_adj
 
     bp_edge = ""
@@ -332,7 +367,34 @@ def analyze_game(
             break
 
     ml_lean = lean_side if tier not in ("PASS", "AVOID") else "PASS"
-    ml_kelly = kelly(lean_prob) if ml_lean != "PASS" else 0.0
+
+    # Use actual line if available, otherwise assume -110
+    if lean_side == "HOME" and home_ml_odds is not None:
+        actual_odds = home_ml_odds
+    elif lean_side == "AWAY" and away_ml_odds is not None:
+        actual_odds = away_ml_odds
+    else:
+        actual_odds = -110
+
+    def _implied(american_odds: int) -> float:
+        if american_odds < 0:
+            return abs(american_odds) / (abs(american_odds) + 100)
+        return 100 / (american_odds + 100)
+
+    implied = _implied(actual_odds)
+    edge = lean_prob - implied  # recompute with real line
+    # Re-check tier against real edge (actual line may shift recommendation)
+    tier = "PASS"
+    for t, min_edge, min_conf in RECOMMENDATION_TIERS:
+        if t == "AVOID":
+            if edge <= min_edge:
+                tier = t
+                break
+        elif edge >= min_edge and lean_prob >= min_conf:
+            tier = t
+            break
+    ml_lean = lean_side if tier not in ("PASS", "AVOID") else "PASS"
+    ml_kelly = kelly(lean_prob, actual_odds) if ml_lean != "PASS" else 0.0
 
     # 7. Total (runs projection)
     home_rpg = home_form.runs_per_game if home_form else 4.5
@@ -354,6 +416,15 @@ def analyze_game(
 
     projected_total = round(proj_home_runs + proj_away_runs, 1)
 
+    # ISO power adjustment — high ISO lineups score more extra-base hits
+    ISO_AVERAGE = 0.160
+    for iso_val, label in [(home_iso, "HOME"), (away_iso, "AWAY")]:
+        if iso_val is not None:
+            iso_adj = (iso_val - ISO_AVERAGE) * 2.0   # each 0.050 ISO above avg adds ~0.1 runs
+            projected_total = round(projected_total + iso_adj, 1)
+            if iso_val >= 0.200:
+                factors.append(f"{label} lineup power surge: ISO {iso_val:.3f} — favors Over")
+
     # Weather adjustment
     weather_total_adj, weather_factor, weather_caution = _weather_adj(weather)
     projected_total = round(projected_total + weather_total_adj, 1)
@@ -362,12 +433,13 @@ def analyze_game(
     if weather_caution:
         cautions.append(weather_caution)
 
-    # Total lean: compare to typical 8.5-9.5 lines
-    typical_line = 8.5
-    if projected_total > typical_line + 0.8:
-        total_lean, total_conf = "OVER", min(0.65, 0.50 + (projected_total - typical_line) * 0.03)
-    elif projected_total < typical_line - 0.8:
-        total_lean, total_conf = "UNDER", min(0.65, 0.50 + (typical_line - projected_total) * 0.03)
+    # Compare against actual posted line if available, else typical
+    compare_line = total_line if total_line is not None else 8.5
+    threshold = 0.6 if total_line is not None else 0.8  # tighter when real line exists
+    if projected_total > compare_line + threshold:
+        total_lean, total_conf = "OVER", min(0.65, 0.50 + (projected_total - compare_line) * 0.03)
+    elif projected_total < compare_line - threshold:
+        total_lean, total_conf = "UNDER", min(0.65, 0.50 + (compare_line - projected_total) * 0.03)
     else:
         total_lean, total_conf = "PASS", 0.5
 
@@ -391,9 +463,11 @@ def analyze_game(
         total_confidence=total_conf,
         projected_total=projected_total,
         ml_kelly_fraction=ml_kelly,
+        ml_american_odds=actual_odds,
         key_factors=factors,
         cautions=cautions,
         sp_advantage=sp_adv,
         bullpen_edge=bp_edge,
         offense_edge=off_str,
+        implied_prob=implied,
     )

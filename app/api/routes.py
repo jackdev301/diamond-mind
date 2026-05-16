@@ -593,6 +593,46 @@ def game_weather(game_id: int, db: Session = Depends(_get_db)):
 # Game Analysis — algorithmic betting intelligence
 # ---------------------------------------------------------------------------
 
+def _batting_stats_for_team(db: Session, *, team_id: int, as_of: date) -> dict:
+    """Return estimated_woba, strikeout_rate, and ISO from L10 batting logs."""
+    bounds = _last_team_game_dates(db, team_id=team_id, window=WindowKey.L10, as_of=as_of)
+    if bounds is None:
+        return {}
+    start, end = bounds
+    rows = db.execute(
+        select(PlayerGameLog).where(
+            PlayerGameLog.team_id == team_id,
+            PlayerGameLog.game_date >= start,
+            PlayerGameLog.game_date <= end,
+        )
+    ).scalars().all()
+    if not rows:
+        return {}
+    walks = sum(r.walks for r in rows)
+    hbp = sum(r.hit_by_pitch for r in rows)
+    hits = sum(r.hits for r in rows)
+    doubles = sum(r.doubles for r in rows)
+    triples = sum(r.triples for r in rows)
+    home_runs = sum(r.home_runs for r in rows)
+    ab = sum(r.at_bats for r in rows)
+    pa = sum(r.plate_appearances for r in rows)
+    sac_flies = sum(r.sac_flies for r in rows)
+    strikeouts = sum(r.strikeouts for r in rows)
+    singles = hits - doubles - triples - home_runs
+    total_bases = singles + 2 * doubles + 3 * triples + 4 * home_runs
+    denom = ab + walks + hbp + sac_flies
+    woba = _safe_rate(
+        0.69 * walks + 0.72 * hbp + 0.89 * singles
+        + 1.27 * doubles + 1.62 * triples + 2.10 * home_runs,
+        denom,
+    )
+    slg = _safe_rate(total_bases, ab)
+    avg = _safe_rate(hits, ab)
+    iso = (slg - avg) if slg is not None and avg is not None else None
+    k_rate = _safe_rate(strikeouts, pa)
+    return {"woba": woba, "iso": iso, "k_rate": k_rate}
+
+
 def _estimated_woba_for_team(db: Session, *, team_id: int, as_of: date) -> Optional[float]:
     """Compute estimated wOBA from L10 batting logs for use in game analysis."""
     bounds = _last_team_game_dates(db, team_id=team_id, window=WindowKey.L10, as_of=as_of)
@@ -666,6 +706,33 @@ def _build_analysis(game_id: int, as_of: date, db: Session):
                 w = dataclasses.replace(w, team_woba=woba)
         return w
 
+    # Fetch batting aggregates for K% matchup edge and ISO power signal
+    home_batting = _batting_stats_for_team(db, team_id=home_id, as_of=as_of)
+    away_batting = _batting_stats_for_team(db, team_id=away_id, as_of=as_of)
+
+    # Fetch actual odds if available
+    from app.models.odds import OddsSnapshotRow
+    from sqlalchemy import desc as _desc
+    def _get_ml_odds(side: str) -> Optional[int]:
+        row = db.execute(
+            select(OddsSnapshotRow).where(
+                OddsSnapshotRow.game_id == game_id,
+                OddsSnapshotRow.market == "moneyline",
+                OddsSnapshotRow.selection == side,
+            ).order_by(_desc(OddsSnapshotRow.captured_at)).limit(1)
+        ).scalar_one_or_none()
+        return row.american_odds if row else None
+
+    def _get_total_line() -> Optional[float]:
+        row = db.execute(
+            select(OddsSnapshotRow).where(
+                OddsSnapshotRow.game_id == game_id,
+                OddsSnapshotRow.market == "total",
+                OddsSnapshotRow.selection == "over",
+            ).order_by(_desc(OddsSnapshotRow.captured_at)).limit(1)
+        ).scalar_one_or_none()
+        return row.line if row else None
+
     # Weather — best available snapshot
     weather_row = db.execute(
         select(WeatherSnapshotRow)
@@ -699,6 +766,13 @@ def _build_analysis(game_id: int, as_of: date, db: Session):
         home_form=_form(home_id),
         away_form=_form(away_id),
         weather=weather,
+        home_ml_odds=_get_ml_odds("home"),
+        away_ml_odds=_get_ml_odds("away"),
+        total_line=_get_total_line(),
+        home_k_rate=home_batting.get("k_rate"),
+        away_k_rate=away_batting.get("k_rate"),
+        home_iso=home_batting.get("iso"),
+        away_iso=away_batting.get("iso"),
     )
 
 

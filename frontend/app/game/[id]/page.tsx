@@ -282,6 +282,8 @@ function AnalysisPanel({ a }: { a: GameAnalysis }) {
             { label: "Trend",   val: a.component_trend },
             { label: "K% Mtch", val: a.component_k_matchup },
             { label: "Weather", val: a.component_weather },
+            { label: "Rest",    val: a.component_rest },
+            { label: "Park",    val: a.component_park },
           ].filter(c => Math.abs(c.val) > 0.001);
           if (components.length === 0) return null;
           const maxAbs = Math.max(...components.map(c => Math.abs(c.val)), 0.01);

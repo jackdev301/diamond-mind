@@ -292,9 +292,11 @@ def analyze_game(
     away_iso: Optional[float] = None,
     home_bb_rate: Optional[float] = None,   # team walk rate (BB/PA)
     away_bb_rate: Optional[float] = None,
-    home_sp_days_rest: Optional[int] = None,  # days since last appearance
+    home_sp_days_rest: Optional[int] = None,
     away_sp_days_rest: Optional[int] = None,
-    venue: Optional[str] = None,           # ballpark name for park factor
+    venue: Optional[str] = None,
+    home_h2h: Optional[tuple] = None,  # (wins, games) this season vs this opponent
+    away_h2h: Optional[tuple] = None,
 ) -> GameAnalysis:
 
     factors: list[str] = []
@@ -409,7 +411,20 @@ def analyze_game(
         side = "HOME" if trend_adj > 0 else "AWAY"
         factors.append(f"{side} team trending better recently")
 
-    # 6. Pitcher days rest
+    # 6. Head-to-head season record
+    if home_h2h and home_h2h[1] >= 4:
+        h_wins, h_games = home_h2h
+        h_win_rate = h_wins / h_games
+        h2h_adj = (h_win_rate - 0.5) * 0.06   # max ~±3% at 0/N or N/N
+        prob += h2h_adj
+        comp_trend += h2h_adj
+        if abs(h2h_adj) >= 0.015:
+            side = "HOME" if h2h_adj > 0 else "AWAY"
+            factors.append(
+                f"{side} dominates season series: {h_wins}-{h_games - h_wins} H2H record"
+            )
+
+    # 7. Pitcher days rest
     comp_rest = 0.0
     for days, sp, side_label in [
         (home_sp_days_rest, home_sp, "HOME"),

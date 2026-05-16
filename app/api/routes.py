@@ -711,6 +711,36 @@ def _build_analysis(game_id: int, as_of: date, db: Session):
     home_batting = _batting_stats_for_team(db, team_id=home_id, as_of=as_of)
     away_batting = _batting_stats_for_team(db, team_id=away_id, as_of=as_of)
 
+    # Head-to-head season record between these two teams
+    def _h2h(team_id: int, opp_id: int) -> tuple[int, int]:
+        """Return (wins, games_played) for team_id vs opp_id this season."""
+        season_start = date(as_of.year, 1, 1)
+        matchup_game_ids = [
+            gid for (gid,) in db.execute(
+                select(Game.id).where(
+                    Game.game_date >= season_start,
+                    Game.game_date <= as_of,
+                    (
+                        ((Game.home_team_id == team_id) & (Game.away_team_id == opp_id)) |
+                        ((Game.home_team_id == opp_id) & (Game.away_team_id == team_id))
+                    ),
+                )
+            ).all()
+        ]
+        if not matchup_game_ids:
+            return 0, 0
+        logs = db.execute(
+            select(TeamGameLog.won).where(
+                TeamGameLog.team_id == team_id,
+                TeamGameLog.game_id.in_(matchup_game_ids),
+            )
+        ).scalars().all()
+        won_count = sum(1 for w in logs if w)
+        return won_count, len(logs)
+
+    home_h2h = _h2h(home_id, away_id)
+    away_h2h = _h2h(away_id, home_id)
+
     # Pitcher days rest — most recent appearance before as_of
     def _days_rest(pitcher_id: Optional[int]) -> Optional[int]:
         if pitcher_id is None:
@@ -793,6 +823,8 @@ def _build_analysis(game_id: int, as_of: date, db: Session):
         home_sp_days_rest=_days_rest(game.home_probable_starter_id),
         away_sp_days_rest=_days_rest(game.away_probable_starter_id),
         venue=game.venue,
+        home_h2h=home_h2h,
+        away_h2h=away_h2h,
     )
 
 

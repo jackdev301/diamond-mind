@@ -26,7 +26,7 @@
 - [x] Phase 3 — DB models (`app/models/*`, `scripts/init_db.py`, 17 tables, tests green)
 - [x] Phase 5 — recent form engine (`app/features/recent_form.py`, fixtures, loaders for Track B)
 - [x] Phase 7 — MLB Stats API ingestion (`app/ingestion/mlb_stats_api.py`, 15 tests, idempotent upserts)
-- [ ] Phase 11 — CLI scripts (`run_pregame_update.py`, `backfill_history.py`) ← next
+- [x] Phase 11 — `build_bullpen_state`, `run_pregame_update.py`, `backfill_history.py` — Track A MVP complete
 
 ## Working order (so Jack is never blocked)
 

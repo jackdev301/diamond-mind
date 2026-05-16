@@ -43,7 +43,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -159,7 +159,7 @@ def team_bullpen(
     state = build_bullpen_state(db, team_id=team_id, as_of_date=as_of)
     if state is None:
         raise HTTPException(404, f"No bullpen data for team {team_id}")
-    return _dc(state)
+    return _dc(score_bullpen(state))
 
 
 # ---------------------------------------------------------------------------

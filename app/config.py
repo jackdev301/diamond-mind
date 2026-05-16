@@ -31,6 +31,10 @@ class Settings(BaseSettings):
 
     odds_api_key: Optional[str] = None
     odds_api_base: str = Field(default="https://api.the-odds-api.com/v4")
+    preferred_bookmaker: str = Field(default="draftkings")
+
+    # DraftKings direct API (not yet public — stub for when it is)
+    draftkings_api_key: Optional[str] = None
 
     weather_provider: str = Field(default="open-meteo")
     openweather_api_key: Optional[str] = None

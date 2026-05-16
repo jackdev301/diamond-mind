@@ -49,3 +49,4 @@ obsidian_vault/**/*.md
 .idea/
 .DS_Store
 *.swp
+.collab_cursor_*

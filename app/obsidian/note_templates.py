@@ -18,6 +18,35 @@ def game_note(report_date: date, bundle: GameBundle) -> str:
         f"\n**Date:** {report_date}  ",
         f"**Venue:** {ctx.venue}  ",
         f"**Daily Report:** {daily_report_link(report_date)}\n",
+    ]
+
+    # Model analysis summary
+    if bundle.analysis:
+        a = bundle.analysis
+        tier_labels = {"STRONG LEAN": "🟢", "LEAN": "🔵", "PASS": "⚪", "AVOID": "🔴"}
+        marker = tier_labels.get(a.ml_tier, "⚪")
+        if a.ml_lean != "PASS" and a.ml_tier not in ("PASS", "AVOID"):
+            lean_abbr = home if a.ml_lean == "HOME" else away
+            edge_pct = (a.ml_confidence - a.implied_prob) * 100
+            lines += [
+                "## Model Signal",
+                f"{marker} **{a.ml_tier} — {lean_abbr} to win**  ",
+                f"Win prob: {home} {a.model_home_win_prob:.1%} / {away} {a.model_away_win_prob:.1%}  ",
+                f"Edge: +{edge_pct:.1f}% | Kelly: {a.ml_kelly_fraction:.1%}\n",
+            ]
+        else:
+            lines += [
+                "## Model Signal",
+                f"{marker} **{a.ml_tier}**  ",
+                f"Win prob: {home} {a.model_home_win_prob:.1%} / {away} {a.model_away_win_prob:.1%}\n",
+            ]
+        if a.key_factors:
+            lines.append("**Key factors:**")
+            for f_str in a.key_factors[:3]:
+                lines.append(f"- {f_str}")
+            lines.append("")
+
+    lines += [
         "## Bullpen",
         f"- {home}: {bullpen_link(home)} — Vulnerability {bundle.home_bullpen.vulnerability_score:.0f}/100",
         f"- {away}: {bullpen_link(away)} — Vulnerability {bundle.away_bullpen.vulnerability_score:.0f}/100\n",

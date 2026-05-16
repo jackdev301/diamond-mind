@@ -22,6 +22,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import aliased
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.contracts import WindowKey
 from app.database import SessionLocal
 from app.features.recent_form import (
@@ -90,6 +91,21 @@ async def add_timing_header(request: Request, call_next):
     response = await call_next(request)
     ms = (time.perf_counter() - t0) * 1000
     response.headers["X-Response-Time"] = f"{ms:.1f}ms"
+    return response
+
+
+@app.middleware("http")
+async def add_cache_control(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path in ("/health", "/cache/clear"):
+        response.headers["Cache-Control"] = "no-store"
+    elif path == "/model/constants":
+        response.headers["Cache-Control"] = "public, max-age=3600"
+    elif path in ("/games/slate", "/games/picks") or path.endswith("/analyze") or path.endswith("/context"):
+        response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=30"
+    elif path.startswith("/games") or path.startswith("/teams") or path.startswith("/pitchers"):
+        response.headers["Cache-Control"] = "public, max-age=30, stale-while-revalidate=15"
     return response
 
 
@@ -295,7 +311,7 @@ def model_constants():
 # Games
 # ---------------------------------------------------------------------------
 
-@app.get("/games")
+@app.get("/games", tags=["games"])
 def list_games(
     game_date: date = Query(..., description="YYYY-MM-DD"),
     db: Session = Depends(_get_db),
@@ -334,7 +350,7 @@ def list_games(
 # Teams
 # ---------------------------------------------------------------------------
 
-@app.get("/teams")
+@app.get("/teams", tags=["teams"])
 def list_teams(db: Session = Depends(_get_db)):
     teams = db.execute(select(Team)).scalars().all()
     return [
@@ -344,7 +360,7 @@ def list_teams(db: Session = Depends(_get_db)):
     ]
 
 
-@app.get("/teams/{team_id}/form")
+@app.get("/teams/{team_id}/form", tags=["teams"])
 def team_form(
     team_id: int,
     window: str = Query("l10", description="season|l20|l10|l5"),
@@ -365,7 +381,7 @@ def team_form(
     return _dc(w)
 
 
-@app.get("/teams/{team_id}/batting")
+@app.get("/teams/{team_id}/batting", tags=["teams"])
 def team_batting(
     team_id: int,
     window: str = Query("l10", description="season|l20|l10|l5"),
@@ -479,7 +495,7 @@ def team_batting(
     }
 
 
-@app.get("/teams/{team_id}/bullpen")
+@app.get("/teams/{team_id}/bullpen", tags=["teams"])
 def team_bullpen(
     team_id: int,
     as_of: date = Query(..., description="YYYY-MM-DD"),
@@ -495,7 +511,7 @@ def team_bullpen(
 # Players
 # ---------------------------------------------------------------------------
 
-@app.get("/players/{player_id}/form")
+@app.get("/players/{player_id}/form", tags=["players"])
 def player_form(
     player_id: int,
     window: str = Query("l10"),
@@ -519,7 +535,7 @@ def player_form(
 # Pitchers
 # ---------------------------------------------------------------------------
 
-@app.get("/pitchers/{pitcher_id}/form")
+@app.get("/pitchers/{pitcher_id}/form", tags=["pitchers"])
 def pitcher_form(
     pitcher_id: int,
     window: str = Query("last_5_starts"),
@@ -537,7 +553,7 @@ def pitcher_form(
     return _dc(w)
 
 
-@app.get("/pitchers/{pitcher_id}/advanced")
+@app.get("/pitchers/{pitcher_id}/advanced", tags=["pitchers"])
 def pitcher_advanced(
     pitcher_id: int,
     window: str = Query("last_5_starts"),
@@ -616,7 +632,7 @@ def pitcher_advanced(
 # GameBundle — single-call composite for the frontend
 # ---------------------------------------------------------------------------
 
-@app.get("/games/{game_id}/bundle")
+@app.get("/games/{game_id}/bundle", tags=["games"])
 def game_bundle(
     game_id: int,
     as_of: date = Query(..., description="YYYY-MM-DD"),
@@ -780,7 +796,7 @@ def game_context(
 # Odds and weather
 # ---------------------------------------------------------------------------
 
-@app.get("/games/{game_id}/odds")
+@app.get("/games/{game_id}/odds", tags=["games"])
 def game_odds(game_id: int, db: Session = Depends(_get_db)):
     """Return the most recent odds snapshots for a game."""
     from sqlalchemy import desc
@@ -804,7 +820,7 @@ def game_odds(game_id: int, db: Session = Depends(_get_db)):
     ]
 
 
-@app.get("/games/{game_id}/weather")
+@app.get("/games/{game_id}/weather", tags=["games"])
 def game_weather(game_id: int, db: Session = Depends(_get_db)):
     """Return the most recent weather snapshot for a game."""
     from sqlalchemy import desc
@@ -876,34 +892,7 @@ def _batting_stats_for_team(db: Session, *, team_id: int, as_of: date) -> dict:
 
 def _estimated_woba_for_team(db: Session, *, team_id: int, as_of: date) -> Optional[float]:
     """Compute estimated wOBA from L10 batting logs for use in game analysis."""
-    bounds = _last_team_game_dates(db, team_id=team_id, window=WindowKey.L10, as_of=as_of)
-    if bounds is None:
-        return None
-    start, end = bounds
-    rows = db.execute(
-        select(PlayerGameLog).where(
-            PlayerGameLog.team_id == team_id,
-            PlayerGameLog.game_date >= start,
-            PlayerGameLog.game_date <= end,
-        )
-    ).scalars().all()
-    if not rows:
-        return None
-    walks = sum(r.walks for r in rows)
-    hbp = sum(r.hit_by_pitch for r in rows)
-    hits = sum(r.hits for r in rows)
-    doubles = sum(r.doubles for r in rows)
-    triples = sum(r.triples for r in rows)
-    home_runs = sum(r.home_runs for r in rows)
-    ab = sum(r.at_bats for r in rows)
-    sac_flies = sum(r.sac_flies for r in rows)
-    singles = hits - doubles - triples - home_runs
-    denom = ab + walks + hbp + sac_flies
-    return _safe_rate(
-        0.69 * walks + 0.72 * hbp + 0.89 * singles
-        + 1.27 * doubles + 1.62 * triples + 2.10 * home_runs,
-        denom,
-    )
+    return _batting_stats_for_team(db, team_id=team_id, as_of=as_of).get("woba")
 
 
 def _build_analysis(game_id: int, as_of: date, db: Session):
@@ -1063,27 +1052,43 @@ def _build_analysis(game_id: int, as_of: date, db: Session):
             return None
         return (as_of - last).days
 
-    # Fetch actual odds if available
+    # Fetch actual odds if available — prefer DraftKings, fall back to any bookmaker
     from app.models.odds import OddsSnapshotRow
     from sqlalchemy import desc as _desc
+    _preferred = get_settings().preferred_bookmaker
+
     def _get_ml_odds(side: str) -> Optional[int]:
+        base_where = [
+            OddsSnapshotRow.game_id == game_id,
+            OddsSnapshotRow.market == "moneyline",
+            OddsSnapshotRow.selection == side,
+        ]
         row = db.execute(
-            select(OddsSnapshotRow).where(
-                OddsSnapshotRow.game_id == game_id,
-                OddsSnapshotRow.market == "moneyline",
-                OddsSnapshotRow.selection == side,
-            ).order_by(_desc(OddsSnapshotRow.captured_at)).limit(1)
+            select(OddsSnapshotRow).where(*base_where, OddsSnapshotRow.bookmaker == _preferred)
+            .order_by(_desc(OddsSnapshotRow.captured_at)).limit(1)
         ).scalar_one_or_none()
+        if row is None:
+            row = db.execute(
+                select(OddsSnapshotRow).where(*base_where)
+                .order_by(_desc(OddsSnapshotRow.captured_at)).limit(1)
+            ).scalar_one_or_none()
         return row.american_odds if row else None
 
     def _get_total_line() -> Optional[float]:
+        base_where = [
+            OddsSnapshotRow.game_id == game_id,
+            OddsSnapshotRow.market == "total",
+            OddsSnapshotRow.selection == "over",
+        ]
         row = db.execute(
-            select(OddsSnapshotRow).where(
-                OddsSnapshotRow.game_id == game_id,
-                OddsSnapshotRow.market == "total",
-                OddsSnapshotRow.selection == "over",
-            ).order_by(_desc(OddsSnapshotRow.captured_at)).limit(1)
+            select(OddsSnapshotRow).where(*base_where, OddsSnapshotRow.bookmaker == _preferred)
+            .order_by(_desc(OddsSnapshotRow.captured_at)).limit(1)
         ).scalar_one_or_none()
+        if row is None:
+            row = db.execute(
+                select(OddsSnapshotRow).where(*base_where)
+                .order_by(_desc(OddsSnapshotRow.captured_at)).limit(1)
+            ).scalar_one_or_none()
         return row.line if row else None
 
     # Weather — best available snapshot
@@ -1172,6 +1177,66 @@ def game_analyze(
     if result is None:
         raise HTTPException(404, f"Game {game_id} not found")
     return result
+
+
+@app.get("/games/{game_id}/analyze/f5", tags=["analysis"])
+def game_analyze_f5(
+    game_id: int,
+    as_of: date = Query(..., description="YYYY-MM-DD"),
+    home_f5_odds: Optional[int] = Query(None, description="American odds, home F5 ML"),
+    away_f5_odds: Optional[int] = Query(None, description="American odds, away F5 ML"),
+    db: Session = Depends(_get_db),
+):
+    """First-5-innings moneyline model — isolates starter skill, excludes bullpen.
+
+    Projection-only unless both F5 odds are supplied (no invented line). Per
+    Arnav's Track A/B split; platoon term is 0.0 until L/R splits land.
+    """
+    import dataclasses
+    from app.betting.f5_model import analyze_f5_moneyline
+
+    game = db.get(Game, game_id)
+    if game is None:
+        raise HTTPException(404, f"Game {game_id} not found")
+    home_team = db.get(Team, game.home_team_id)
+    away_team = db.get(Team, game.away_team_id)
+
+    def _sp(pitcher_id):
+        if pitcher_id is None:
+            return None
+        return build_starter_form_window(
+            db, pitcher_id=pitcher_id, window=WindowKey.LAST_5_STARTS, as_of_date=as_of,
+        )
+
+    result = analyze_f5_moneyline(
+        game_id=game_id,
+        home_abbr=home_team.abbr if home_team else "HOM",
+        away_abbr=away_team.abbr if away_team else "AWY",
+        home_sp=_sp(game.home_probable_starter_id),
+        away_sp=_sp(game.away_probable_starter_id),
+        home_f5_odds=home_f5_odds,
+        away_f5_odds=away_f5_odds,
+    )
+    return dataclasses.asdict(result)
+
+
+@app.get("/quant/verify", tags=["analysis"])
+def quant_verify(
+    model_prob: float = Query(..., ge=0.01, le=0.99, description="model win prob for the side"),
+    side_odds: int = Query(..., description="American odds for the side"),
+    other_odds: int = Query(..., description="American odds for the opponent"),
+    evidence_quality: float = Query(0.7, ge=0.0, le=1.0),
+):
+    """Run the live quant pipeline for an arbitrary line.
+
+    Single source of truth for the Bet Verifier UI — Shin devig, Bayesian
+    shrinkage, edge posterior, uncertainty-adjusted Kelly, log-growth.
+    """
+    from app.betting.quant import compute_quant_edge, quant_recommendation
+
+    qe = compute_quant_edge(model_prob, side_odds, other_odds, evidence_quality)
+    rec = quant_recommendation(qe, model_confidence=model_prob, evidence_quality=evidence_quality)
+    return {**dataclasses.asdict(qe), "recommendation": rec}
 
 
 @app.get("/games/picks", tags=["analysis"])
@@ -1266,7 +1331,8 @@ def slate(
 # LLM polish (optional — stubs if key missing)
 # ---------------------------------------------------------------------------
 
-@app.post("/report/polish")
+
+@app.post("/report/polish", tags=["reports"])
 def polish_report_endpoint(body: dict):
     """Polish a raw Markdown report with Claude.
 

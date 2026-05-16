@@ -21,6 +21,8 @@ from typing import List, Optional
 
 from app.contracts import PitcherFormWindow, TeamFormWindow, WeatherSnapshot
 from app.features.bullpen_vulnerability import BullpenReport
+from app.betting.implied_probability import vig_free_probability, expected_value
+from app.betting.quant import compute_quant_edge, quant_recommendation
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 HOME_ADVANTAGE = 0.535         # 2022-2024 MLB home win rate (declining from old 54% avg)
@@ -83,9 +85,11 @@ TREND_ADJUSTMENTS = {
     "small_sample_warning": 0.0,
 }
 
+# Thresholds are against VIG-FREE implied probability.
+# 5% vig-free edge ≈ 3% edge against a typical -110 line after removing ~4.5% juice.
 RECOMMENDATION_TIERS = [
-    ("STRONG LEAN", 0.06, 0.70),
-    ("LEAN",        0.03, 0.55),
+    ("STRONG LEAN", 0.05, 0.70),
+    ("LEAN",        0.025, 0.55),
     ("PASS",        0.00, 0.00),
     ("AVOID",      -0.05, 0.00),
 ]
@@ -124,7 +128,41 @@ class GameAnalysis:
     sp_advantage: str = ""
     bullpen_edge: str = ""
     offense_edge: str = ""
+
+    # Raw book implied probability (includes vig)
     implied_prob: float = 0.5238
+    # Vig-free implied probability (Pinnacle method) — correct comparison target
+    vig_free_implied: float = 0.5000
+    # Book overround (1.05 = 5% vig)
+    overround: float = 1.0476
+    # Edge against vig-free probability — honest edge number
+    edge_vig_free: float = 0.0
+    # Expected value per dollar wagered: EV = b×p − q
+    ev_per_dollar: float = 0.0
+
+    # ── Quant layer (PhD-level) ──────────────────────────────────────────────
+    # Devig method comparison: proportional (naive) vs Shin (favorite-longshot
+    # corrected). q_* fields are the honest, risk-managed numbers.
+    q_prop_vig_free: float = 0.5000   # Sonnet-4.6-theory devig
+    q_shin_vig_free: float = 0.5000   # Opus-4.7 Shin devig
+    q_shin_z: float = 0.0             # estimated insider proportion
+    q_p_model: float = 0.5000         # raw model prob for the leaned side
+    q_p_shrunk: float = 0.5000        # after Bayesian shrinkage to market
+    q_shrink_weight: float = 0.0      # model reliability w
+    q_edge_naive: float = 0.0         # p_model − proportional vig-free
+    q_edge_quant: float = 0.0         # p_shrunk − Shin vig-free (honest)
+    q_edge_sd: float = 0.0            # SD of the edge estimate
+    q_prob_positive: float = 0.5      # P(edge > 0) — what you actually bet
+    q_ci_low: float = 0.0             # 95% credible interval on edge
+    q_ci_high: float = 0.0
+    q_effective_n: float = 0.0        # effective sample size
+    q_kelly_full: float = 0.0         # unscaled Kelly
+    q_kelly_sized: float = 0.0        # uncertainty-adjusted stake
+    q_kelly_mult: float = 0.0         # DERIVED fractional multiplier
+    q_growth_rate: float = 0.0        # expected log-growth per bet
+    q_doubling_bets: float = 0.0      # bets to double bankroll (0 = never)
+    q_evidence_quality: float = 0.0   # data-completeness proxy ∈ [0,1]
+
     # Component breakdown for transparency (each value = prob shift from that factor)
     component_fip: float = 0.0
     component_bullpen: float = 0.0
@@ -630,49 +668,57 @@ def analyze_game(
     # 6. Moneyline recommendation
     lean_prob = prob if prob >= 0.5 else away_prob
     lean_side = "HOME" if prob >= 0.5 else "AWAY"
-    lean_abbr = home_abbr if lean_side == "HOME" else away_abbr
 
-    implied = 0.5238  # -110 implied probability
-    edge = lean_prob - implied
-    tier = "PASS"
-    for t, min_edge, min_conf in RECOMMENDATION_TIERS:
-        if t == "AVOID":
-            if edge <= min_edge:
-                tier = t
-                break
-        elif edge >= min_edge and lean_prob >= min_conf:
-            tier = t
-            break
-
-    ml_lean = lean_side if tier not in ("PASS", "AVOID") else "PASS"
-
-    # Use actual line if available, otherwise assume -110
-    if lean_side == "HOME" and home_ml_odds is not None:
-        actual_odds = home_ml_odds
+    # Use actual line if available, otherwise assume -110 / +100 market
+    if home_ml_odds is not None and away_ml_odds is not None:
+        actual_home_odds = home_ml_odds
+        actual_away_odds = away_ml_odds
+    elif lean_side == "HOME" and home_ml_odds is not None:
+        actual_home_odds = home_ml_odds
+        actual_away_odds = -home_ml_odds + (10 if home_ml_odds < 0 else -10)  # rough mirror
     elif lean_side == "AWAY" and away_ml_odds is not None:
-        actual_odds = away_ml_odds
+        actual_away_odds = away_ml_odds
+        actual_home_odds = -away_ml_odds + (10 if away_ml_odds < 0 else -10)
     else:
-        actual_odds = -110
+        actual_home_odds = -110
+        actual_away_odds = -110
 
-    def _implied(american_odds: int) -> float:
-        if american_odds < 0:
-            return abs(american_odds) / (abs(american_odds) + 100)
-        return 100 / (american_odds + 100)
+    actual_odds = actual_home_odds if lean_side == "HOME" else actual_away_odds
+    other_odds = actual_away_odds if lean_side == "HOME" else actual_home_odds
 
-    implied = _implied(actual_odds)
-    edge = lean_prob - implied  # recompute with real line
-    # Re-check tier against real edge (actual line may shift recommendation)
-    tier = "PASS"
-    for t, min_edge, min_conf in RECOMMENDATION_TIERS:
-        if t == "AVOID":
-            if edge <= min_edge:
-                tier = t
-                break
-        elif edge >= min_edge and lean_prob >= min_conf:
-            tier = t
-            break
-    ml_lean = lean_side if tier not in ("PASS", "AVOID") else "PASS"
-    ml_kelly = kelly(lean_prob, actual_odds) if ml_lean != "PASS" else 0.0
+    # Vig removal — compare model to vig-free market, not raw implied
+    vf_this, vf_other, overround_val = vig_free_probability(actual_odds, other_odds)
+    raw_implied = abs(actual_odds) / (abs(actual_odds) + 100) if actual_odds < 0 else 100 / (actual_odds + 100)
+    edge_vf = lean_prob - vf_this
+    ev = expected_value(lean_prob, actual_odds)
+
+    # ── Evidence quality: data-completeness proxy ∈ [0,1] ────────────────────
+    # Drives both the Bayesian shrinkage weight and the posterior sample size.
+    # A model with thin inputs is shrunk hard toward the market and its edge
+    # interval widens — it cannot earn a STRONG LEAN on vibes.
+    _signals = [
+        home_fip is not None,
+        away_fip is not None,
+        home_bullpen is not None,
+        away_bullpen is not None,
+        home_form is not None,
+        away_form is not None,
+        home_ml_odds is not None and away_ml_odds is not None,
+    ]
+    evidence_quality = sum(1.0 for s in _signals if s) / len(_signals)
+    if home_sp and home_sp.insufficient_sample:
+        evidence_quality *= 0.85
+    if away_sp and away_sp.insufficient_sample:
+        evidence_quality *= 0.85
+    evidence_quality = round(min(1.0, max(0.0, evidence_quality)), 4)
+
+    # ── Quant pipeline: Shin devig → shrinkage → posterior → sized Kelly ─────
+    qe = compute_quant_edge(lean_prob, actual_odds, other_odds, evidence_quality)
+    tier = quant_recommendation(qe, model_confidence=lean_prob, evidence_quality=evidence_quality)
+    if tier == "NEED MORE INFO":
+        tier = "PASS"  # surfaced via cautions; ml_lean stays PASS
+    ml_lean = lean_side if tier in ("STRONG LEAN", "LEAN") else "PASS"
+    ml_kelly = qe.kelly_sized if ml_lean != "PASS" else 0.0
 
     # 7. Total (runs projection)
     home_rpg = home_form.runs_per_game if home_form else 4.5
@@ -763,7 +809,30 @@ def analyze_game(
         sp_advantage=sp_adv,
         bullpen_edge=bp_edge,
         offense_edge=off_str,
-        implied_prob=implied,
+        implied_prob=round(raw_implied, 4),
+        vig_free_implied=round(vf_this, 4),
+        overround=round(overround_val, 4),
+        edge_vig_free=round(edge_vf, 4),
+        ev_per_dollar=round(ev, 4),
+        q_prop_vig_free=qe.prop_vig_free,
+        q_shin_vig_free=qe.shin_vig_free,
+        q_shin_z=qe.shin_z,
+        q_p_model=qe.p_model,
+        q_p_shrunk=qe.p_shrunk,
+        q_shrink_weight=qe.shrink_weight,
+        q_edge_naive=qe.edge_naive,
+        q_edge_quant=qe.edge_quant,
+        q_edge_sd=qe.edge_sd,
+        q_prob_positive=qe.prob_positive,
+        q_ci_low=qe.ci_low,
+        q_ci_high=qe.ci_high,
+        q_effective_n=qe.effective_n,
+        q_kelly_full=qe.kelly_full,
+        q_kelly_sized=qe.kelly_sized,
+        q_kelly_mult=qe.kelly_multiplier,
+        q_growth_rate=qe.growth_rate,
+        q_doubling_bets=qe.doubling_bets if qe.doubling_bets is not None else 0.0,
+        q_evidence_quality=evidence_quality,
         component_fip=round(comp_fip, 4),
         component_bullpen=round(comp_bp, 4),
         component_offense=round(comp_off, 4),

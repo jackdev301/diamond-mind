@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import List, Optional
 
+from app.betting.game_analyzer import GameAnalysis
 from app.contracts import (
     GameContext,
     OddsSnapshot,
@@ -35,6 +36,7 @@ class GameBundle:
     away_form: Optional[TeamFormWindow] = None
     odds: Optional[List[OddsSnapshot]] = None
     weather: Optional[WeatherSnapshot] = None
+    analysis: Optional[GameAnalysis] = None
 
 
 def generate_daily_report(report_date: date, games: List[GameBundle]) -> str:
@@ -48,6 +50,10 @@ def generate_daily_report(report_date: date, games: List[GameBundle]) -> str:
     return "\n\n---\n\n".join(sections)
 
 
+def _tier_emoji(tier: str) -> str:
+    return {"STRONG LEAN": "🟢", "LEAN": "🔵", "PASS": "⚪", "AVOID": "🔴"}.get(tier, "⚪")
+
+
 def _header(report_date: date, games: List[GameBundle]) -> str:
     return (
         f"# Diamond Mind — MLB Intelligence Report\n"
@@ -58,15 +64,27 @@ def _header(report_date: date, games: List[GameBundle]) -> str:
 
 
 def _slate_overview(games: List[GameBundle]) -> str:
-    lines = [f"## Slate Overview\n", f"**{len(games)} game(s) today.**\n"]
+    actionable = [b for b in games if b.analysis and b.analysis.ml_tier in ("STRONG LEAN", "LEAN")]
+    lines = [
+        f"## Slate Overview\n",
+        f"**{len(games)} game(s) today** · {len(actionable)} actionable signal(s)\n",
+    ]
     for b in games:
         ctx = b.context
         vuln_home = b.home_bullpen.vulnerability_score
         vuln_away = b.away_bullpen.vulnerability_score
+        tier_str = ""
+        if b.analysis and b.analysis.ml_tier not in ("PASS",):
+            marker = _tier_emoji(b.analysis.ml_tier)
+            lean_abbr = (
+                ctx.home_team_abbr if b.analysis.ml_lean == "HOME"
+                else ctx.away_team_abbr if b.analysis.ml_lean == "AWAY"
+                else None
+            )
+            tier_str = f" · {marker} {b.analysis.ml_tier}" + (f" ({lean_abbr})" if lean_abbr else "")
         lines.append(
-            f"- **{ctx.away_team_abbr} @ {ctx.home_team_abbr}** "
-            f"— Bullpen vulnerability: {ctx.away_team_abbr} {vuln_away:.0f} / "
-            f"{ctx.home_team_abbr} {vuln_home:.0f}"
+            f"- **{ctx.away_team_abbr} @ {ctx.home_team_abbr}**{tier_str}"
+            f" — BP vuln: {ctx.away_team_abbr} {vuln_away:.0f} / {ctx.home_team_abbr} {vuln_home:.0f}"
         )
     return "\n".join(lines)
 
@@ -78,6 +96,8 @@ def _game_section(b: GameBundle) -> str:
         title += f" (Game {ctx.game_number})"
 
     parts = [title, f"**Venue:** {ctx.venue}\n"]
+    if b.analysis:
+        parts.append(_analysis_block(b))
     parts.append(_starters_block(b))
     parts.append(_bullpen_block(b))
     if b.home_form or b.away_form:
@@ -88,6 +108,52 @@ def _game_section(b: GameBundle) -> str:
         parts.append(_weather_block(b.weather))
 
     return "\n\n".join(parts)
+
+
+def _analysis_block(b: GameBundle) -> str:
+    a = b.analysis
+    if not a:
+        return ""
+    ctx = b.context
+    lines = ["### Model Analysis\n"]
+
+    # Moneyline recommendation
+    tier_marker = _tier_emoji(a.ml_tier)
+    if a.ml_lean != "PASS" and a.ml_tier not in ("PASS", "AVOID"):
+        lean_abbr = ctx.home_team_abbr if a.ml_lean == "HOME" else ctx.away_team_abbr
+        odds_str = f"+{a.ml_american_odds}" if a.ml_american_odds > 0 else str(a.ml_american_odds)
+        edge_pct = (a.ml_confidence - a.implied_prob) * 100
+        lines.append(
+            f"**{tier_marker} {a.ml_tier} — {lean_abbr} to win**  \n"
+            f"Model: {a.ml_confidence:.1%} | Book: {a.implied_prob:.1%} ({odds_str}) "
+            f"| Edge: +{edge_pct:.1f}% | Kelly: {a.ml_kelly_fraction:.1%} of bankroll"
+        )
+    else:
+        lines.append(f"**{tier_marker} {a.ml_tier}** — No moneyline edge identified.")
+
+    # Win probabilities
+    lines.append(
+        f"\n**Win probability:** {ctx.home_team_abbr} {a.model_home_win_prob:.1%} "
+        f"/ {ctx.away_team_abbr} {a.model_away_win_prob:.1%}"
+    )
+
+    # Total
+    if a.total_lean != "PASS":
+        lines.append(f"**Total:** {a.total_lean} (projected {a.projected_total:.1f} runs)")
+
+    # Key factors
+    if a.key_factors:
+        lines.append("\n**Key factors:**")
+        for f_str in a.key_factors:
+            lines.append(f"- {f_str}")
+
+    # Cautions
+    if a.cautions:
+        lines.append("\n**Cautions:**")
+        for c in a.cautions:
+            lines.append(f"- {c}")
+
+    return "\n".join(lines)
 
 
 def _starters_block(b: GameBundle) -> str:

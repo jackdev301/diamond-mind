@@ -83,10 +83,10 @@ export default function GameDetailPage() {
       <h2 className="text-lg font-semibold mb-3">Starting Pitchers</h2>
       <div className="grid grid-cols-2 gap-4 mb-8">
         {[
-          { abbr: bundle.home_team_abbr, starter: bundle.home_starter },
-          { abbr: bundle.away_team_abbr, starter: bundle.away_starter },
-        ].map(({ abbr, starter }) => (
-          <div key={abbr} className="border border-gray-800 rounded-lg p-4">
+          { role: "home", abbr: bundle.home_team_abbr, starter: bundle.home_starter },
+          { role: "away", abbr: bundle.away_team_abbr, starter: bundle.away_starter },
+        ].map(({ role, abbr, starter }) => (
+          <div key={role} className="border border-gray-800 rounded-lg p-4">
             <h3 className="font-bold mb-3">{abbr}</h3>
             {starter ? (
               <>

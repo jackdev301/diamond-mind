@@ -18,6 +18,7 @@ from typing import List, Literal, Optional
 
 class WindowKey(str, Enum):
     SEASON = "season"
+    L90 = "l90"      # rolling 90-day — deeper history for small-sample regression
     L20 = "l20"
     L10 = "l10"
     L5 = "l5"
@@ -88,6 +89,8 @@ class PlayerFormWindow:
     trend_label: TrendLabel
     as_of_date: date
     woba: Optional[float] = None
+    platoon_woba_vs_l: Optional[float] = None
+    platoon_woba_vs_r: Optional[float] = None
     insufficient_sample: bool = False
 
 

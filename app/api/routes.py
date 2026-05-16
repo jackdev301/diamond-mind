@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.contracts import WindowKey
 from app.database import SessionLocal
+from app.ingestion.park_factors import get_park_factor
 from app.features.recent_form import (
     FIP_CONSTANT,
     build_bullpen_state,
@@ -695,6 +696,13 @@ def game_bundle(
         "away_starter": _starter(game.away_probable_starter_id),
         "home_bullpen": _bullpen(home_id),
         "away_bullpen": _bullpen(away_id),
+        "park_factors": {
+            "venue": game.venue,
+            "runs": get_park_factor(game.venue).runs,
+            "hr": get_park_factor(game.venue).hr,
+            "hits": get_park_factor(game.venue).hits,
+            "is_dome": get_park_factor(game.venue).is_dome,
+        },
     }
 
 
@@ -790,6 +798,26 @@ def game_context(
         "weather": weather,
         "analysis": _build_analysis_cached(game_id, as_of, db),
     }
+
+
+# ---------------------------------------------------------------------------
+# Park factors
+# ---------------------------------------------------------------------------
+
+@app.get("/park-factors")
+def park_factors_all():
+    """Return park factors for all known venues."""
+    from app.ingestion.park_factors import _PARK_FACTORS
+    return [
+        {"venue": pf.venue, "runs": pf.runs, "hr": pf.hr, "hits": pf.hits, "is_dome": pf.is_dome}
+        for pf in _PARK_FACTORS
+    ]
+
+
+@app.get("/park-factors/venue")
+def park_factors_venue(venue: str = Query(..., description="Venue name")):
+    pf = get_park_factor(venue)
+    return {"venue": pf.venue, "runs": pf.runs, "hr": pf.hr, "hits": pf.hits, "is_dome": pf.is_dome}
 
 
 # ---------------------------------------------------------------------------

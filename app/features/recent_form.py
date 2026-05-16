@@ -60,6 +60,7 @@ MIN_SAMPLE = {
     WindowKey.L5: 3,
     WindowKey.L10: 6,
     WindowKey.L20: 12,
+    WindowKey.L90: 30,
     WindowKey.LAST_5_STARTS: 3,
     WindowKey.LAST_10_STARTS: 6,
     WindowKey.SEASON: 1,
@@ -296,6 +297,10 @@ def _window_date_range(
     if window is WindowKey.SEASON:
         return date(as_of_date.year, 1, 1), as_of_date
 
+    if window is WindowKey.L90:
+        from datetime import timedelta
+        return as_of_date - timedelta(days=89), as_of_date
+
     if window in GAME_WINDOWS:
         n = GAME_WINDOWS[window]
         stmt = (
@@ -521,6 +526,34 @@ def build_hitter_form_window(
         ).scalar() or player.current_team_id or 0
     )
 
+    def _platoon_woba(hand: str) -> Optional[float]:
+        row = session.execute(
+            select(
+                func.coalesce(func.sum(PlayerGameLog.at_bats), 0),
+                func.coalesce(func.sum(PlayerGameLog.hits), 0),
+                func.coalesce(func.sum(PlayerGameLog.doubles), 0),
+                func.coalesce(func.sum(PlayerGameLog.triples), 0),
+                func.coalesce(func.sum(PlayerGameLog.home_runs), 0),
+                func.coalesce(func.sum(PlayerGameLog.walks), 0),
+                func.coalesce(func.sum(PlayerGameLog.hit_by_pitch), 0),
+                func.coalesce(func.sum(PlayerGameLog.sac_flies), 0),
+            ).where(
+                and_(
+                    PlayerGameLog.player_id == player_id,
+                    PlayerGameLog.game_date >= start,
+                    PlayerGameLog.game_date <= end,
+                    PlayerGameLog.opponent_pitcher_hand == hand,
+                )
+            )
+        ).one()
+        p_ab, p_h, p_d, p_t, p_hr, p_bb, p_hbp, p_sf = row
+        if p_ab + p_bb + p_hbp + p_sf < 10:
+            return None
+        return _estimated_woba_from_counts(
+            at_bats=p_ab, hits=p_h, doubles=p_d, triples=p_t,
+            home_runs=p_hr, walks=p_bb, hit_by_pitch=p_hbp, sac_flies=p_sf,
+        )
+
     return PlayerFormWindow(
         player_id=player_id,
         player_name=player.full_name,
@@ -538,6 +571,8 @@ def build_hitter_form_window(
         trend_label=trend,
         as_of_date=as_of_date,
         woba=None,
+        platoon_woba_vs_l=_platoon_woba("L"),
+        platoon_woba_vs_r=_platoon_woba("R"),
         insufficient_sample=games < MIN_SAMPLE[window],
     )
 

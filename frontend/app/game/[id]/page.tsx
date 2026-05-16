@@ -7,7 +7,7 @@ import { api, type GameBundle, type WeatherData, type GameAnalysis } from "@/lib
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "10px", letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: "10px" }}>
+    <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: "10px" }}>
       {children}
     </div>
   );
@@ -100,7 +100,7 @@ function StarterCard({ abbr, starter }: { abbr: string; starter: NonNullable<Gam
       <Label>{abbr} Starter</Label>
       {starter ? (
         <>
-          <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "18px", marginBottom: "12px", color: "var(--text)" }}>
+          <div style={{ fontWeight: 600, fontSize: "15px", marginBottom: "12px", color: "var(--text)", letterSpacing: "-0.01em" }}>
             {starter.pitcher_name}
           </div>
           <StatRow label="ERA" value={starter.era?.toFixed(2)} />
@@ -159,7 +159,7 @@ function CompareRow({ label, home, away, higherBetter = true, fmt = (v: number) 
   const aVal = away ?? null;
   const homeWins = hVal !== null && aVal !== null && (higherBetter ? hVal > aVal : hVal < aVal);
   const awayWins = hVal !== null && aVal !== null && (higherBetter ? aVal > hVal : aVal < hVal);
-  const winColor = "var(--amber)";
+  const winColor = "var(--text)";
   const loseColor = "var(--text-2)";
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 1fr", alignItems: "center", padding: "5px 0", borderBottom: "1px solid var(--border)" }}>
@@ -186,9 +186,9 @@ function TeamStatsCard({ homeAbbr, awayAbbr, homeForm, awayForm }: {
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "6px", padding: "16px" }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 1fr", marginBottom: "12px" }}>
-        <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "16px", color: "var(--amber)", textAlign: "right" }}>{homeAbbr}</div>
-        <div style={{ fontFamily: "var(--font-display)", fontSize: "10px", fontWeight: 700, letterSpacing: "0.1em", color: "var(--text-3)", textTransform: "uppercase", textAlign: "center", paddingTop: "4px" }}>L10</div>
-        <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "16px", color: "var(--text-2)", textAlign: "left" }}>{awayAbbr}</div>
+        <div style={{ fontWeight: 600, fontSize: "14px", color: "var(--text)", textAlign: "right", letterSpacing: "-0.01em" }}>{homeAbbr}</div>
+        <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase", textAlign: "center", paddingTop: "3px" }}>L10</div>
+        <div style={{ fontWeight: 600, fontSize: "14px", color: "var(--text-2)", textAlign: "left", letterSpacing: "-0.01em" }}>{awayAbbr}</div>
       </div>
       <CompareRow label="R/G" home={hf?.runs_per_game} away={af?.runs_per_game} fmt={v => v.toFixed(1)} />
       <CompareRow label="RA/G" home={hf?.runs_allowed_per_game} away={af?.runs_allowed_per_game} higherBetter={false} fmt={v => v.toFixed(1)} />
@@ -209,7 +209,7 @@ function TeamStatsCard({ homeAbbr, awayAbbr, homeForm, awayForm }: {
 
 function tierColor(tier: string) {
   if (tier === "STRONG LEAN") return "var(--green)";
-  if (tier === "LEAN") return "var(--amber)";
+  if (tier === "LEAN") return "var(--blue)";
   if (tier === "AVOID") return "var(--red)";
   return "var(--text-3)";
 }
@@ -221,7 +221,7 @@ function AnalysisPanel({ a }: { a: GameAnalysis }) {
 
   return (
     <div style={{ marginBottom: "24px" }}>
-      <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "11px", letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--amber)", marginBottom: "12px" }}>
+      <div style={{ fontSize: "11px", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-2)", marginBottom: "12px" }}>
         Model Analysis
       </div>
 
@@ -230,8 +230,8 @@ function AnalysisPanel({ a }: { a: GameAnalysis }) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px", marginBottom: "20px" }}>
           {/* ML Lean */}
           <div>
-            <div style={{ fontFamily: "var(--font-display)", fontSize: "10px", fontWeight: 700, letterSpacing: "0.1em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "6px" }}>ML Lean</div>
-            <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "22px", color: tc }}>
+            <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "6px" }}>ML Lean</div>
+            <div style={{ fontWeight: 700, fontSize: "18px", color: tc, letterSpacing: "-0.02em" }}>
               {isActionable ? `${leanAbbr} ML` : a.ml_tier}
             </div>
             {isActionable && (
@@ -240,23 +240,23 @@ function AnalysisPanel({ a }: { a: GameAnalysis }) {
               </div>
             )}
             {isActionable && (
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--amber)", marginTop: "1px" }}>
-                Edge {((a.ml_confidence - a.implied_prob) * 100).toFixed(1)}% · Kelly {(a.ml_kelly_fraction * 100).toFixed(1)}%
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--green)", marginTop: "1px" }}>
+                +{((a.ml_confidence - a.implied_prob) * 100).toFixed(1)}% edge · {(a.ml_kelly_fraction * 100).toFixed(1)}% Kelly
               </div>
             )}
           </div>
 
           {/* Win Probability */}
           <div>
-            <div style={{ fontFamily: "var(--font-display)", fontSize: "10px", fontWeight: 700, letterSpacing: "0.1em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "6px" }}>Win Prob</div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: "13px", color: "var(--amber)", marginBottom: "2px" }}>{a.home_team_abbr} {Math.round(a.model_home_win_prob * 100)}%</div>
+            <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "6px" }}>Win Prob</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: "13px", color: "var(--text)", marginBottom: "2px" }}>{a.home_team_abbr} {Math.round(a.model_home_win_prob * 100)}%</div>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: "13px", color: "var(--text-2)" }}>{a.away_team_abbr} {Math.round(a.model_away_win_prob * 100)}%</div>
           </div>
 
           {/* Total */}
           <div>
-            <div style={{ fontFamily: "var(--font-display)", fontSize: "10px", fontWeight: 700, letterSpacing: "0.1em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "6px" }}>Total</div>
-            <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "22px", color: a.total_lean === "OVER" ? "var(--amber)" : a.total_lean === "UNDER" ? "var(--green)" : "var(--text-3)" }}>
+            <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "6px" }}>Total</div>
+            <div style={{ fontWeight: 700, fontSize: "18px", letterSpacing: "-0.02em", color: a.total_lean === "OVER" ? "var(--amber)" : a.total_lean === "UNDER" ? "var(--blue)" : "var(--text-3)" }}>
               {a.total_lean}
             </div>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-2)", marginTop: "2px" }}>
@@ -289,7 +289,7 @@ function AnalysisPanel({ a }: { a: GameAnalysis }) {
           const maxAbs = Math.max(...components.map(c => Math.abs(c.val)), 0.01);
           return (
             <div style={{ paddingTop: "14px", borderTop: "1px solid var(--border)", marginBottom: "14px" }}>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: "10px", fontWeight: 700, letterSpacing: "0.1em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "10px" }}>Model Breakdown</div>
+              <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "10px" }}>Model Breakdown</div>
               {components.map(({ label, val }) => {
                 const pct = (Math.abs(val) / maxAbs) * 100;
                 const color = val > 0 ? "var(--green)" : "var(--red)";
@@ -318,7 +318,7 @@ function AnalysisPanel({ a }: { a: GameAnalysis }) {
         {/* Key factors */}
         {a.key_factors.length > 0 && (
           <div style={{ paddingTop: "14px", borderTop: "1px solid var(--border)" }}>
-            <div style={{ fontFamily: "var(--font-display)", fontSize: "10px", fontWeight: 700, letterSpacing: "0.1em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "8px" }}>Key Factors</div>
+            <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "8px" }}>Key Factors</div>
             {a.key_factors.map((f, i) => (
               <div key={i} style={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--text-2)", marginBottom: "4px" }}>· {f}</div>
             ))}
@@ -363,7 +363,7 @@ export default function GameDetailPage() {
       </Link>
 
       <div style={{ marginTop: "16px", marginBottom: "28px", borderBottom: "1px solid var(--border)", paddingBottom: "16px" }}>
-        <h1 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "40px", letterSpacing: "0.02em", margin: 0, lineHeight: 1 }}>
+        <h1 style={{ fontWeight: 700, fontSize: "28px", letterSpacing: "-0.03em", margin: 0, lineHeight: 1.1 }}>
           {bundle.away_team_abbr} <span style={{ color: "var(--text-3)", fontWeight: 400 }}>@</span> {bundle.home_team_abbr}
         </h1>
         <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-2)", marginTop: "6px" }}>
@@ -374,7 +374,7 @@ export default function GameDetailPage() {
       {/* Team Stats */}
       {(bundle.home_form || bundle.away_form) && (
         <div style={{ marginBottom: "24px" }}>
-          <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "11px", letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--amber)", marginBottom: "12px" }}>
+          <div style={{ fontSize: "11px", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-2)", marginBottom: "12px" }}>
             Team Stats
           </div>
           <TeamStatsCard
@@ -388,7 +388,7 @@ export default function GameDetailPage() {
 
       {/* Starters */}
       <div style={{ marginBottom: "24px" }}>
-        <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "11px", letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--amber)", marginBottom: "12px" }}>
+        <div style={{ fontSize: "11px", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-2)", marginBottom: "12px" }}>
           Starting Pitchers
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
@@ -399,7 +399,7 @@ export default function GameDetailPage() {
 
       {/* Bullpens */}
       <div style={{ marginBottom: "24px" }}>
-        <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "11px", letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--amber)", marginBottom: "12px" }}>
+        <div style={{ fontSize: "11px", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-2)", marginBottom: "12px" }}>
           Bullpen Intelligence
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>

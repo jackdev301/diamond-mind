@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { api, type Game, type BullpenData } from "@/lib/api";
+import { api, type Game, type BullpenData, type GameAnalysis } from "@/lib/api";
 
 function vulnColor(score: number): string {
   if (score >= 70) return "var(--red)";
@@ -40,19 +40,34 @@ function BullpenPill({ abbr, bp }: { abbr: string; bp: BullpenData }) {
   );
 }
 
+function tierColor(tier: string): string {
+  if (tier === "STRONG LEAN") return "var(--green)";
+  if (tier === "LEAN") return "var(--amber)";
+  if (tier === "AVOID") return "var(--red)";
+  return "var(--text-3)";
+}
+
 function GameCard({ game, date, index }: { game: Game; date: string; index: number }) {
   const [homeBp, setHomeBp] = useState<BullpenData | null>(null);
   const [awayBp, setAwayBp] = useState<BullpenData | null>(null);
+  const [analysis, setAnalysis] = useState<GameAnalysis | null>(null);
 
   useEffect(() => {
     let alive = true;
     api.bullpen(game.home_team_id, date).then(bp => { if (alive) setHomeBp(bp); });
     api.bullpen(game.away_team_id, date).then(bp => { if (alive) setAwayBp(bp); });
+    api.analyze(game.game_id, date).then(a => { if (alive) setAnalysis(a); });
     return () => { alive = false; };
   }, [game, date]);
 
   const topVuln = Math.max(homeBp?.vulnerability_score ?? 0, awayBp?.vulnerability_score ?? 0);
-  const accentColor = topVuln > 0 ? vulnColor(topVuln) : "var(--border-2)";
+  const hasAnalysis = analysis && analysis.ml_tier !== "PASS";
+  const accentColor = hasAnalysis
+    ? tierColor(analysis.ml_tier)
+    : topVuln > 0 ? vulnColor(topVuln) : "var(--border-2)";
+
+  const leanAbbr = analysis?.ml_lean === "HOME" ? game.home_team_abbr
+    : analysis?.ml_lean === "AWAY" ? game.away_team_abbr : null;
 
   return (
     <Link href={`/game/${game.game_id}`} style={{ textDecoration: "none" }}>
@@ -66,26 +81,44 @@ function GameCard({ game, date, index }: { game: Game; date: string; index: numb
           borderRadius: "6px",
           padding: "16px 20px",
           display: "grid",
-          gridTemplateColumns: "1fr 1fr",
+          gridTemplateColumns: "1fr auto 1fr",
           gap: "16px",
           alignItems: "center",
         } as React.CSSProperties}
       >
         {/* Left: matchup */}
         <div>
-          <div style={{
-            fontFamily: "var(--font-display)",
-            fontWeight: 800,
-            fontSize: "22px",
-            letterSpacing: "0.02em",
-            lineHeight: 1.1,
-            color: "var(--text)",
-          }}>
+          <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "22px", letterSpacing: "0.02em", lineHeight: 1.1, color: "var(--text)" }}>
             {game.away_team_abbr} <span style={{ color: "var(--text-3)", fontWeight: 400 }}>@</span> {game.home_team_abbr}
           </div>
           <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-2)", marginTop: "4px" }}>
             {game.venue}
           </div>
+        </div>
+
+        {/* Center: model pick badge */}
+        <div style={{ textAlign: "center", minWidth: "90px" }}>
+          {analysis ? (
+            analysis.ml_lean !== "PASS" ? (
+              <>
+                <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "13px", letterSpacing: "0.08em", color: accentColor, textTransform: "uppercase" }}>
+                  {analysis.ml_tier}
+                </div>
+                <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "18px", color: "var(--text)", marginTop: "1px" }}>
+                  {leanAbbr} ML
+                </div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--text-2)", marginTop: "1px" }}>
+                  {Math.round(analysis.ml_confidence * 100)}% · {(analysis.ml_kelly_fraction * 100).toFixed(1)}% Kelly
+                </div>
+              </>
+            ) : (
+              <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "13px", color: "var(--text-3)", letterSpacing: "0.06em" }}>
+                PASS
+              </div>
+            )
+          ) : (
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--text-3)" }}>—</div>
+          )}
         </div>
 
         {/* Right: bullpen bars */}

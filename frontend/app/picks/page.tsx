@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, type GameAnalysis } from "@/lib/api";
 import { teamLogoUrl } from "@/lib/team-logos";
+import { Gauge, DuelBar, MethodCompare, GrowthReadout, tierColor, pPlusColor } from "@/components/quant";
 
 function TeamLogo({ abbr, size = 28 }: { abbr: string; size?: number }) {
   return (
@@ -18,149 +19,110 @@ function TeamLogo({ abbr, size = 28 }: { abbr: string; size?: number }) {
   );
 }
 
-function tierColor(tier: string): string {
-  if (tier === "STRONG LEAN") return "var(--green)";
-  if (tier === "LEAN") return "var(--blue)";
-  if (tier === "AVOID") return "var(--red)";
-  return "var(--text-3)";
+function offsetDate(base: string, days: number): string {
+  const d = new Date(base + "T12:00:00");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split("T")[0];
 }
 
-function leanColor(lean: string): string {
-  if (lean === "OVER") return "var(--amber)";
-  if (lean === "UNDER") return "var(--blue)";
-  return "var(--text-3)";
-}
-
-function ProbBar({ label, prob, color }: { label: string; prob: number; color: string }) {
-  const pct = Math.round(prob * 100);
+function DateNav({ date, onChange }: { date: string; onChange: (d: string) => void }) {
+  const btnStyle: React.CSSProperties = {
+    background: "var(--surface)", border: "1px solid var(--border-2)", borderRadius: "4px",
+    padding: "6px 10px", color: "var(--text-2)", fontFamily: "var(--font-mono)",
+    fontSize: "13px", cursor: "pointer", lineHeight: 1,
+  };
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-2)", width: "36px" }}>{label}</span>
-      <div className="stat-bar-track" style={{ flex: 1 }}>
-        <div className="stat-bar-fill" style={{ "--fill": `${pct}%`, background: color } as React.CSSProperties} />
-      </div>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color, fontWeight: 600, width: "32px", textAlign: "right" }}>{pct}%</span>
+    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+      <button style={btnStyle} onClick={() => onChange(offsetDate(date, -1))}>←</button>
+      <input
+        type="date" value={date}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ background: "var(--surface)", border: "1px solid var(--border-2)", borderRadius: "4px", padding: "6px 10px", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: "12px", outline: "none" }}
+      />
+      <button style={btnStyle} onClick={() => onChange(offsetDate(date, 1))}>→</button>
     </div>
   );
 }
 
 function PickCard({ pick, index }: { pick: GameAnalysis; index: number }) {
   const tc = tierColor(pick.ml_tier);
-  const isActionable = pick.ml_lean !== "PASS" && pick.ml_tier !== "AVOID";
+  const isActionable = pick.ml_tier === "STRONG LEAN" || pick.ml_tier === "LEAN";
+  const leanAbbr = pick.ml_lean === "HOME" ? pick.home_team_abbr : pick.ml_lean === "AWAY" ? pick.away_team_abbr : null;
+  const slab = isActionable ? tc : "var(--border-2)";
 
   return (
-    <Link href={`/game/${pick.game_id}`} style={{ textDecoration: "none" }}>
+    <Link href={`/game/${pick.game_id}?date=${pick.game_date ?? ""}`} style={{ textDecoration: "none" }}>
       <div
-        className="game-card fade-up"
-        style={{
-          "--delay": `${index * 40}ms`,
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderLeft: `2px solid ${tc}`,
-          borderRadius: "6px",
-          padding: "16px 20px",
-        } as React.CSSProperties}
+        className="fade-up game-card"
+        style={{ "--delay": `${index * 45}ms`, "--slab-color": slab } as React.CSSProperties}
       >
-        {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <TeamLogo abbr={pick.away_team_abbr} size={22} />
-            <span style={{ fontWeight: 600, fontSize: "16px", color: "var(--text)", letterSpacing: "-0.02em" }}>
-              {pick.away_team_abbr}
-            </span>
-            <span style={{ color: "var(--text-3)", fontSize: "13px" }}>@</span>
-            <TeamLogo abbr={pick.home_team_abbr} size={22} />
-            <span style={{ fontWeight: 600, fontSize: "16px", color: "var(--text)", letterSpacing: "-0.02em" }}>
-              {pick.home_team_abbr}
-            </span>
-            {pick.venue && (
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-3)" }}>{pick.venue}</span>
-            )}
+        <div className="verdict-slab" style={{ "--slab-color": slab } as React.CSSProperties}>
+          {/* Top: matchup + tier */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <TeamLogo abbr={pick.away_team_abbr} size={22} />
+              <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "15px" }}>{pick.away_team_abbr}</span>
+              <span style={{ color: "var(--text-3)", fontSize: "12px" }}>@</span>
+              <TeamLogo abbr={pick.home_team_abbr} size={22} />
+              <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "15px" }}>{pick.home_team_abbr}</span>
+              {pick.venue && <span style={{ fontSize: "10px", color: "var(--text-3)", marginLeft: "4px" }}>{pick.venue}</span>}
+            </div>
+            <span className="tier-badge" style={{ color: tc, borderColor: tc }}>{pick.ml_tier}</span>
           </div>
-          <span className="tier-badge" style={{ color: tc, borderColor: tc, opacity: 0.9 }}>
-            {pick.ml_tier}
-          </span>
+
+          {/* Middle: verdict + gauge */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: "20px", alignItems: "center", marginTop: "14px" }}>
+            <div>
+              {isActionable && leanAbbr ? (
+                <>
+                  <div style={{ fontFamily: "var(--font-display)", fontSize: "30px", fontWeight: 800, color: tc, textTransform: "uppercase", lineHeight: 1, letterSpacing: "-0.02em" }}>
+                    {leanAbbr} ML
+                  </div>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-2)", marginTop: "5px" }}>
+                    {pick.ml_american_odds > 0 ? "+" : ""}{pick.ml_american_odds} ·{" "}
+                    Shin-devigged · shrunk to {(pick.q_p_shrunk * 100).toFixed(1)}%
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontFamily: "var(--font-display)", fontSize: "22px", fontWeight: 800, color: "var(--text-3)", textTransform: "uppercase", lineHeight: 1 }}>
+                  {pick.ml_tier === "AVOID" ? "AVOID" : "PASS"}
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-3)", fontWeight: 400, marginTop: "5px", textTransform: "none" }}>
+                    P(+EV) {(pick.q_prob_positive * 100).toFixed(0)}% — below action threshold
+                  </div>
+                </div>
+              )}
+              <div style={{ marginTop: "12px" }}>
+                <DuelBar model={pick.q_p_shrunk} market={pick.q_shin_vig_free} lower={pick.q_ci_low} upper={pick.q_ci_high} />
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <Gauge p={pick.q_prob_positive} size={132} />
+            </div>
+          </div>
+
+          {/* Bottom: growth HUD */}
+          <div style={{ marginTop: "14px" }}>
+            <GrowthReadout a={pick} />
+          </div>
+
+          {isActionable && (
+            <div style={{ marginTop: "14px" }}>
+              <MethodCompare a={pick} />
+            </div>
+          )}
+
+          {/* Factors */}
+          {pick.key_factors.length > 0 && (
+            <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px solid var(--border)" }}>
+              {pick.key_factors.slice(0, 2).map((f, i) => (
+                <div key={i} style={{ fontSize: "10px", color: "var(--text-3)", marginBottom: "2px", paddingLeft: "6px", borderLeft: "1px solid var(--border-2)" }}>{f}</div>
+              ))}
+              {pick.cautions.slice(0, 1).map((c, i) => (
+                <div key={i} style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--orange)", marginTop: "3px" }}>{c}</div>
+              ))}
+            </div>
+          )}
         </div>
-
-        {/* Body grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-          {/* Win probability */}
-          <div>
-            <div style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-3)", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Win Prob</div>
-            <ProbBar label={pick.home_team_abbr} prob={pick.model_home_win_prob} color="var(--text)" />
-            <ProbBar label={pick.away_team_abbr} prob={pick.model_away_win_prob} color="var(--text-2)" />
-          </div>
-
-          {/* Recommendation */}
-          <div>
-            <div style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-3)", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Signal</div>
-            {isActionable ? (
-              <div>
-                <div style={{ fontWeight: 600, fontSize: "15px", color: tc, letterSpacing: "-0.01em" }}>
-                  {pick.ml_lean === "HOME" ? pick.home_team_abbr : pick.away_team_abbr} to win
-                </div>
-                <div style={{ fontSize: "11px", color: "var(--text-2)", marginTop: "5px", lineHeight: 1.6 }}>
-                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
-                    {pick.ml_american_odds > 0 ? "+" : ""}{pick.ml_american_odds}
-                  </span>
-                  {" "}· Book says{" "}
-                  <span style={{ fontFamily: "var(--font-mono)" }}>{Math.round(pick.implied_prob * 100)}%</span>
-                  {" "}chance to win
-                </div>
-                <div style={{ fontSize: "11px", color: "var(--text-2)", lineHeight: 1.6 }}>
-                  Model says{" "}
-                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600, color: tc }}>
-                    {Math.round(pick.ml_confidence * 100)}%
-                  </span>
-                  {" "}chance to win
-                </div>
-                <div style={{ fontSize: "11px", color: "var(--green)", lineHeight: 1.6 }}>
-                  Edge:{" "}
-                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
-                    +{((pick.ml_confidence - pick.implied_prob) * 100).toFixed(1)}%
-                  </span>
-                  {" "}over book
-                </div>
-                <div style={{ fontSize: "10px", color: "var(--text-3)", lineHeight: 1.5, marginTop: "4px" }}>
-                  Kelly:{" "}
-                  <span style={{ fontFamily: "var(--font-mono)" }}>{(pick.ml_kelly_fraction * 100).toFixed(1)}%</span>
-                  {" "}of bankroll — bet size from Kelly formula, capped at 25%
-                </div>
-              </div>
-            ) : (
-              <div style={{ fontWeight: 500, fontSize: "14px", color: "var(--text-3)" }}>
-                {pick.ml_tier === "AVOID" ? "Avoid" : "Pass"}
-              </div>
-            )}
-            {pick.total_lean !== "PASS" && (
-              <div style={{ marginTop: "6px", fontFamily: "var(--font-mono)", fontSize: "11px", color: leanColor(pick.total_lean) }}>
-                {pick.total_lean} · proj {pick.projected_total.toFixed(1)}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Key factors */}
-        {pick.key_factors.length > 0 && (
-          <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px solid var(--border)" }}>
-            {pick.key_factors.slice(0, 2).map((f, i) => (
-              <div key={i} style={{ fontSize: "12px", color: "var(--text-2)", marginBottom: "2px" }}>
-                {f}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Cautions */}
-        {pick.cautions.length > 0 && (
-          <div style={{ marginTop: "6px" }}>
-            {pick.cautions.slice(0, 2).map((c, i) => (
-              <div key={i} style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--amber)", marginBottom: "2px" }}>
-                {c}
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </Link>
   );
@@ -182,31 +144,26 @@ export default function PicksPage() {
     return () => { alive = false; };
   }, [date]);
 
-  function changeDate(d: string) {
-    setPicks(null); setError(false); setDate(d);
-  }
+  function changeDate(d: string) { setPicks(null); setError(false); setDate(d); }
 
   const actionable = picks?.filter((p) => p.ml_tier === "STRONG LEAN" || p.ml_tier === "LEAN") ?? [];
   const rest = picks?.filter((p) => p.ml_tier !== "STRONG LEAN" && p.ml_tier !== "LEAN") ?? [];
 
   return (
     <div>
-      {/* Page header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px", paddingBottom: "16px", borderBottom: "1px solid var(--border)" }}>
         <div>
-          <h1 style={{ fontWeight: 700, fontSize: "20px", letterSpacing: "-0.03em", margin: 0, color: "var(--text)" }}>
+          <h1 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "22px", letterSpacing: "-0.02em", margin: 0, textTransform: "uppercase" }}>
             Daily Picks
           </h1>
-          <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-3)", marginTop: "3px" }}>
-            Deterministic model · {date}
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-3)", marginTop: "4px", display: "flex", alignItems: "center", gap: "7px" }}>
+            <span className="live-dot" />
+            {picks
+              ? `${picks.length} games · ${actionable.length} actionable · Shin + Bayesian quant · ${date}`
+              : `Shin + Bayesian quant model · ${date}`}
           </div>
         </div>
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => changeDate(e.target.value)}
-          style={{ background: "var(--surface)", border: "1px solid var(--border-2)", borderRadius: "4px", padding: "6px 10px", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: "12px", outline: "none" }}
-        />
+        <DateNav date={date} onChange={changeDate} />
       </div>
 
       {error && (
@@ -214,25 +171,19 @@ export default function PicksPage() {
           Backend not reachable — run: uvicorn app.api.routes:app --port 8000
         </div>
       )}
-
       {!error && picks === null && (
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-3)", padding: "40px 0", textAlign: "center" }}>
-          Loading…
-        </div>
+        <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-3)", padding: "40px 0", textAlign: "center" }}>Loading…</div>
       )}
-
       {picks?.length === 0 && (
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-3)", padding: "40px 0", textAlign: "center" }}>
-          No games found for {date}.
-        </div>
+        <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-3)", padding: "40px 0", textAlign: "center" }}>No games found for {date}.</div>
       )}
 
       {actionable.length > 0 && (
         <div style={{ marginBottom: "28px" }}>
-          <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--green)", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-            Actionable — {actionable.length}
+          <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--green)", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            ▸ Actionable — {actionable.length}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             {actionable.map((p, i) => <PickCard key={p.game_id} pick={p} index={i} />)}
           </div>
         </div>
@@ -241,11 +192,11 @@ export default function PicksPage() {
       {rest.length > 0 && (
         <div>
           {actionable.length > 0 && (
-            <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-3)", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-              Rest of Slate — {rest.length}
+            <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-3)", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              ▸ Rest of slate — {rest.length}
             </div>
           )}
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             {rest.map((p, i) => <PickCard key={p.game_id} pick={p} index={actionable.length + i} />)}
           </div>
         </div>

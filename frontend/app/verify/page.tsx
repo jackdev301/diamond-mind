@@ -1,142 +1,162 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api, type QuantVerify } from "@/lib/api";
+import { Gauge, DuelBar, HudChip, pPlusColor } from "@/components/quant";
 
-function impliedProbability(odds: number): number {
-  if (odds < 0) return Math.abs(odds) / (Math.abs(odds) + 100);
-  return 100 / (odds + 100);
-}
-
-function recommendation(edge: number, confidence: number, evidenceQuality: number): string {
-  if (confidence < 0.4 || evidenceQuality < 0.4) return "NEED MORE INFO";
-  if (edge >= 0.06 && confidence >= 0.7 && evidenceQuality >= 0.7) return "STRONG LEAN";
-  if (edge >= 0.03 && confidence >= 0.55) return "LEAN";
-  if (edge <= -0.05) return "AVOID";
-  return "PASS";
-}
-
-const REC_COLOR: Record<string, string> = {
-  "STRONG LEAN": "var(--green)",
-  "LEAN":        "var(--amber)",
-  "AVOID":       "var(--red)",
-  "NEED MORE INFO": "var(--orange)",
-  "PASS":        "var(--text-2)",
-};
-
-function Slider({ label, value, min, max, step, onChange, display }: {
-  label: string; value: number; min: number; max: number; step: number;
-  onChange: (v: number) => void; display: string;
-}) {
+function NumField({ label, value, onChange, step = 1, hint }: { label: string; value: number; onChange: (v: number) => void; step?: number; hint?: string }) {
   return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-        <span style={{ fontFamily: "var(--font-body)", fontSize: "13px", color: "var(--text-2)" }}>{label}</span>
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "13px", color: "var(--amber)", fontWeight: 600 }}>{display}</span>
-      </div>
+    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+      <span style={{ fontSize: "10px", letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-3)" }}>{label}</span>
       <input
-        type="range" min={min} max={max} step={step} value={value}
-        onChange={e => onChange(Number(e.target.value))}
-        style={{ width: "100%", accentColor: "var(--amber)", cursor: "pointer" }}
+        type="number" value={value} step={step}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        style={{ background: "var(--surface)", border: "1px solid var(--border-2)", borderRadius: "4px", padding: "8px 10px", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: "14px", fontWeight: 600, outline: "none", width: "100%" }}
       />
+      {hint && <span style={{ fontSize: "9px", color: "var(--text-3)" }}>{hint}</span>}
+    </label>
+  );
+}
+
+function Formula({ title, body, plug }: { title: string; body: string; plug: string }) {
+  return (
+    <div style={{ marginBottom: "18px" }}>
+      <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "6px" }}>{title}</div>
+      <div className="formula-block">{body}</div>
+      <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--green)", marginTop: "6px", paddingLeft: "8px", borderLeft: "2px solid var(--green)" }}>{plug}</div>
     </div>
   );
 }
 
-export default function VerifyPage() {
-  const [odds, setOdds] = useState(-110);
-  const [modelProb, setModelProb] = useState(0.5);
-  const [confidence, setConfidence] = useState(0.6);
-  const [evidenceQuality, setEvidenceQuality] = useState(0.6);
-  const [result, setResult] = useState<{ impliedProb: number; edge: number; rec: string } | null>(null);
+const pc = (x: number, d = 1) => `${(x * 100).toFixed(d)}%`;
 
-  function evaluate() {
-    const impliedProb = impliedProbability(odds);
-    const edge = modelProb - impliedProb;
-    const rec = recommendation(edge, confidence, evidenceQuality);
-    setResult({ impliedProb, edge, rec });
-  }
+export default function VerifyPage() {
+  const [modelProb, setModelProb] = useState(58);
+  const [sideOdds, setSideOdds] = useState(-130);
+  const [otherOdds, setOtherOdds] = useState(110);
+  const [evidence, setEvidence] = useState(75);
+  const [q, setQ] = useState<QuantVerify | null>(null);
+  const [err, setErr] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const mp = Math.min(0.99, Math.max(0.01, modelProb / 100));
+      api.quantVerify(mp, sideOdds, otherOdds, evidence / 100).then((r) => {
+        if (r === null) { setErr(true); return; }
+        setErr(false); setQ(r);
+      });
+    }, 250);
+    return () => clearTimeout(t);
+  }, [modelProb, sideOdds, otherOdds, evidence]);
+
+  const tc = q ? (q.recommendation === "STRONG LEAN" ? "var(--green)" : q.recommendation === "LEAN" ? "var(--blue)" : q.recommendation === "AVOID" ? "var(--red)" : "var(--text-3)") : "var(--text-3)";
 
   return (
-    <div style={{ maxWidth: "480px" }}>
-      <div style={{ borderBottom: "1px solid var(--border)", paddingBottom: "16px", marginBottom: "28px" }}>
-        <h1 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "32px", letterSpacing: "0.03em", textTransform: "uppercase", margin: 0 }}>
+    <div>
+      <div style={{ marginBottom: "22px", paddingBottom: "16px", borderBottom: "1px solid var(--border)" }}>
+        <h1 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "22px", letterSpacing: "-0.02em", margin: 0, textTransform: "uppercase" }}>
           Bet Verifier
         </h1>
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-2)", marginTop: "4px" }}>
-          Strong Lean · Lean · Pass · Avoid · Need More Info — not financial advice
+        <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-3)", marginTop: "4px" }}>
+          Live quant pipeline · Shin devig → Bayesian shrink → edge posterior → uncertainty Kelly
         </div>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-        {/* Odds input */}
-        <div>
-          <div style={{ fontFamily: "var(--font-body)", fontSize: "13px", color: "var(--text-2)", marginBottom: "8px" }}>
-            American Odds
-          </div>
-          <input
-            type="number" value={odds} step={5}
-            onChange={e => setOdds(Number(e.target.value))}
-            style={{
-              width: "100%",
-              background: "var(--surface)",
-              border: "1px solid var(--border-2)",
-              borderRadius: "4px",
-              padding: "10px 14px",
-              color: "var(--text)",
-              fontFamily: "var(--font-mono)",
-              fontSize: "18px",
-              fontWeight: 600,
-            }}
-          />
-        </div>
-
-        <Slider label="Your estimated probability" value={modelProb} min={0.01} max={0.99} step={0.01} onChange={setModelProb} display={`${(modelProb * 100).toFixed(0)}%`} />
-        <Slider label="Confidence in estimate" value={confidence} min={0} max={1} step={0.05} onChange={setConfidence} display={`${(confidence * 100).toFixed(0)}%`} />
-        <Slider label="Evidence quality" value={evidenceQuality} min={0} max={1} step={0.05} onChange={setEvidenceQuality} display={`${(evidenceQuality * 100).toFixed(0)}%`} />
-
-        <button
-          onClick={evaluate}
-          style={{
-            background: "var(--amber)",
-            color: "var(--bg)",
-            border: "none",
-            borderRadius: "4px",
-            padding: "12px",
-            fontFamily: "var(--font-display)",
-            fontWeight: 700,
-            fontSize: "14px",
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            cursor: "pointer",
-            transition: "opacity 0.15s",
-          }}
-          onMouseEnter={e => (e.currentTarget.style.opacity = "0.85")}
-          onMouseLeave={e => (e.currentTarget.style.opacity = "1")}
-        >
-          Evaluate
-        </button>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginBottom: "20px" }}>
+        <NumField label="Model win %" value={modelProb} onChange={setModelProb} hint="your model's prob for the side" />
+        <NumField label="Side odds (American)" value={sideOdds} onChange={setSideOdds} step={5} hint="the line you'd bet" />
+        <NumField label="Opponent odds" value={otherOdds} onChange={setOtherOdds} step={5} hint="needed to devig" />
+        <NumField label="Evidence quality %" value={evidence} onChange={setEvidence} step={5} hint="data completeness 0–100" />
       </div>
 
-      {result && (
-        <div style={{ marginTop: "24px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "6px", padding: "20px", display: "flex", flexDirection: "column", gap: "10px" }}>
-          {[
-            { label: "Implied Probability", value: `${(result.impliedProb * 100).toFixed(1)}%` },
-            { label: "Your Estimate", value: `${(modelProb * 100).toFixed(1)}%` },
-            { label: "Edge", value: `${result.edge >= 0 ? "+" : ""}${(result.edge * 100).toFixed(1)}%`, color: result.edge >= 0 ? "var(--green)" : "var(--red)" },
-          ].map(({ label, value, color }) => (
-            <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: "10px", borderBottom: "1px solid var(--border)" }}>
-              <span style={{ fontFamily: "var(--font-body)", fontSize: "13px", color: "var(--text-2)" }}>{label}</span>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: "13px", color: color ?? "var(--text)", fontWeight: 600 }}>{value}</span>
+      {err && <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--red)", padding: "10px 12px", border: "1px solid var(--red)", borderRadius: "4px" }}>Backend not reachable — uvicorn app.api.routes:app --port 8000</div>}
+
+      {q && (
+        <>
+          <div className="verdict-slab" style={{ "--slab-color": tc, marginBottom: "20px" } as React.CSSProperties}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 150px", gap: "20px", alignItems: "center" }}>
+              <div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: "32px", fontWeight: 800, color: tc, textTransform: "uppercase", lineHeight: 1 }}>
+                  {q.recommendation}
+                </div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-2)", marginTop: "6px" }}>
+                  model {pc(q.p_model)} → shrunk {pc(q.p_shrunk)} vs Shin market {pc(q.shin_vig_free)}
+                </div>
+                <div style={{ marginTop: "14px" }}>
+                  <DuelBar model={q.p_shrunk} market={q.shin_vig_free} lower={q.ci_low} upper={q.ci_high} />
+                </div>
+              </div>
+              <div style={{ display: "flex", justifyContent: "center" }}>
+                <Gauge p={q.prob_positive} size={144} />
+              </div>
             </div>
-          ))}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "4px" }}>
-            <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "13px", letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-2)" }}>Recommendation</span>
-            <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "22px", letterSpacing: "0.04em", color: REC_COLOR[result.rec] ?? "var(--text)" }}>
-              {result.rec}
-            </span>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "6px", marginTop: "16px" }}>
+              <HudChip k="EV / $1" v={`${q.ev_per_dollar >= 0 ? "+" : ""}${(q.ev_per_dollar * 100).toFixed(1)}¢`} color={q.ev_per_dollar >= 0 ? "var(--green)" : "var(--red)"} />
+              <HudChip k="honest edge" v={`${q.edge_quant >= 0 ? "+" : ""}${(q.edge_quant * 100).toFixed(2)}%`} color={q.edge_quant >= 0 ? "var(--green)" : "var(--red)"} />
+              <HudChip k="log-growth / bet" v={q.growth_rate > 0 ? `+${(q.growth_rate * 100).toFixed(3)}%` : "0%"} color={q.growth_rate > 0 ? "var(--green)" : "var(--text-3)"} />
+              <HudChip k="Kelly stake" v={pc(q.kelly_sized, 2)} color="var(--purple)" />
+            </div>
           </div>
-        </div>
+
+          <div className="vs-grid" style={{ marginBottom: "8px" }}>
+            <div className="vs-col naive">
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Sonnet 4.6 theory</div>
+              <div style={{ fontSize: 10, color: "var(--text-3)", marginBottom: 10 }}>proportional devig · point edge · ¼-Kelly</div>
+              <Cmp k="vig-free implied" v={pc(q.prop_vig_free)} />
+              <Cmp k="edge" v={`${q.edge_naive >= 0 ? "+" : ""}${(q.edge_naive * 100).toFixed(2)}%`} c={q.edge_naive >= 0 ? "var(--green)" : "var(--red)"} />
+              <Cmp k="confidence in edge" v="not modeled" c="var(--text-3)" />
+              <Cmp k="Kelly mult" v="0.25 (assumed)" c="var(--text-3)" />
+            </div>
+            <div className="vs-spine"><span>VS</span></div>
+            <div className="vs-col quant">
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Opus 4.7 quant</div>
+              <div style={{ fontSize: 10, color: "var(--text-3)", marginBottom: 10 }}>Shin devig · Bayesian shrink · posterior Kelly</div>
+              <Cmp k={`Shin vig-free (z=${q.shin_z.toFixed(3)})`} v={pc(q.shin_vig_free)} />
+              <Cmp k="edge (shrunk)" v={`${q.edge_quant >= 0 ? "+" : ""}${(q.edge_quant * 100).toFixed(2)}%`} c={q.edge_quant >= 0 ? "var(--green)" : "var(--red)"} />
+              <Cmp k="P(edge > 0)" v={pc(q.prob_positive)} c={pPlusColor(q.prob_positive)} />
+              <Cmp k="Kelly mult (derived)" v={q.kelly_multiplier.toFixed(3)} c="var(--blue)" />
+            </div>
+          </div>
+          <div style={{ marginBottom: "26px", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-2)", paddingLeft: 8, borderLeft: "2px solid var(--amber)" }}>
+            Naive devig + point edge would tell you to bet <strong style={{ color: "var(--amber)" }}>{(q.edge_naive * 100).toFixed(2)}%</strong>.
+            The quant path strips the favorite–longshot bias, shrinks the lone model toward the market, and prices in estimation noise —
+            leaving an honest <strong style={{ color: q.edge_quant >= 0 ? "var(--green)" : "var(--red)" }}>{(q.edge_quant * 100).toFixed(2)}%</strong> you are{" "}
+            <strong style={{ color: pPlusColor(q.prob_positive) }}>{pc(q.prob_positive)}</strong> sure is real.
+          </div>
+
+          <div className="section-label">The math — your numbers plugged in</div>
+
+          <Formula
+            title="1 · Shin devig (favorite–longshot correction)"
+            body={`r_i = 1/decimal_odds_i ,  B = Σ r_i\np_i(z) = [ √( z² + 4(1−z)·r_i²/B ) − z ] / ( 2(1−z) )\nsolve z so Σ p_i = 1`}
+            plug={`B = ${q.booksum.toFixed(4)} (overround) · z = ${q.shin_z.toFixed(4)} insider proportion → Shin fair = ${pc(q.shin_vig_free)} (proportional said ${pc(q.prop_vig_free)})`}
+          />
+          <Formula
+            title="2 · Bayesian shrinkage toward the market prior"
+            body={`logit(p*) = w·logit(p_model) + (1−w)·logit(p_market)\nw = evidence quality`}
+            plug={`w = ${q.shrink_weight.toFixed(2)} → ${pc(q.p_model)} pulled to ${pc(q.p_shrunk)} (a lone model rarely beats a liquid market by much)`}
+          />
+          <Formula
+            title="3 · Edge as a posterior, not a point"
+            body={`Var(p) ≈ p(1−p)/(N+1) ,  N = 60·evidence\nP(edge>0) = Φ( edge_mean / SD )`}
+            plug={`N_eff = ${q.effective_n} · SD = ${(q.edge_sd * 100).toFixed(2)}% · 95% CI [${(q.ci_low * 100).toFixed(1)}%, ${(q.ci_high * 100).toFixed(1)}%] · P(+) = ${pc(q.prob_positive)}`}
+          />
+          <Formula
+            title="4 · Uncertainty-adjusted Kelly + log-growth"
+            body={`f = f_full · g²/(g²+σ²)  , capped at ¼\ng_rate = p·ln(1+b·f) + q·ln(1−f)`}
+            plug={`f_full = ${pc(q.kelly_full, 2)} · derived mult = ${q.kelly_multiplier.toFixed(3)} → stake ${pc(q.kelly_sized, 2)} · growth ${q.growth_rate > 0 ? "+" : ""}${(q.growth_rate * 100).toFixed(3)}%/bet${q.doubling_bets ? ` · 2× in ${q.doubling_bets} bets` : ""}`}
+          />
+        </>
       )}
+    </div>
+  );
+}
+
+function Cmp({ k, v, c }: { k: string; v: string; c?: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "5px 0", borderBottom: "1px solid var(--border)" }}>
+      <span style={{ fontSize: 10, color: "var(--text-3)", letterSpacing: "0.04em", textTransform: "uppercase" }}>{k}</span>
+      <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 13, color: c ?? "var(--text)" }}>{v}</span>
     </div>
   );
 }

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { NavLinks } from "./nav";
 import "./globals.css";
 
-const FONTS_URL = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap";
+const FONTS_URL = "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Syne:wght@700;800&display=swap";
 
 export const metadata: Metadata = {
   title: "Diamond Mind",
@@ -31,30 +31,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           zIndex: 100,
         }}>
           <span style={{
-            fontFamily: "var(--font-ui)",
-            fontWeight: 700,
-            fontSize: "15px",
+            fontFamily: "var(--font-display)",
+            fontWeight: 800,
+            fontSize: "14px",
             color: "var(--text)",
-            letterSpacing: "-0.02em",
+            letterSpacing: "0.02em",
+            textTransform: "uppercase",
             marginRight: "8px",
           }}>
             Diamond Mind
           </span>
           <div style={{ width: "1px", height: "16px", background: "var(--border-2)" }} />
-          {[
-            { href: "/", label: "Slate" },
-            { href: "/picks", label: "Picks" },
-            { href: "/report", label: "Report" },
-            { href: "/verify", label: "Verifier" },
-          ].map(({ href, label }) => (
-            <Link key={href} href={href} className="nav-link" style={{
-              fontFamily: "var(--font-ui)",
-              fontWeight: 500,
-              fontSize: "13px",
-            }}>
-              {label}
-            </Link>
-          ))}
+          <NavLinks />
         </nav>
         <main style={{ maxWidth: "1120px", margin: "0 auto", padding: "28px 24px" }}>
           {children}

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api, type SlateGame, type BullpenData, type GameAnalysis } from "@/lib/api";
 import { teamLogoUrl } from "@/lib/team-logos";
@@ -15,6 +16,37 @@ function TeamLogo({ abbr, size = 28 }: { abbr: string; size?: number }) {
       style={{ objectFit: "contain", flexShrink: 0 }}
       onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
     />
+  );
+}
+
+function offsetDate(base: string, days: number): string {
+  const d = new Date(base + "T12:00:00");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split("T")[0];
+}
+
+function DateNav({ date, onChange }: { date: string; onChange: (d: string) => void }) {
+  const btnStyle: React.CSSProperties = {
+    background: "var(--surface)",
+    border: "1px solid var(--border-2)",
+    borderRadius: "4px",
+    padding: "6px 10px",
+    color: "var(--text-2)",
+    fontFamily: "var(--font-mono)",
+    fontSize: "13px",
+    cursor: "pointer",
+    lineHeight: 1,
+  };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+      <button style={btnStyle} onClick={() => onChange(offsetDate(date, -1))}>←</button>
+      <input
+        type="date" value={date}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ background: "var(--surface)", border: "1px solid var(--border-2)", borderRadius: "4px", padding: "6px 10px", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: "12px", outline: "none" }}
+      />
+      <button style={btnStyle} onClick={() => onChange(offsetDate(date, 1))}>→</button>
+    </div>
   );
 }
 
@@ -53,7 +85,7 @@ function GameCard({ game, index }: { game: SlateGame; index: number }) {
     : analysis?.ml_lean === "AWAY" ? game.away_team_abbr : null;
 
   return (
-    <Link href={`/game/${game.game_id}`} style={{ textDecoration: "none" }}>
+    <Link href={`/game/${game.game_id}?date=${game.game_date}`} style={{ textDecoration: "none" }}>
       <div
         className="game-card fade-up"
         style={{
@@ -118,9 +150,10 @@ function GameCard({ game, index }: { game: SlateGame; index: number }) {
   );
 }
 
-export default function SlatePage() {
+function SlatePageInner() {
+  const searchParams = useSearchParams();
   const today = new Date().toISOString().split("T")[0];
-  const [date, setDate] = useState(today);
+  const [date, setDate] = useState(() => searchParams.get("date") ?? today);
   const [games, setGames] = useState<SlateGame[] | null>(null);
   const [error, setError] = useState(false);
 
@@ -145,11 +178,7 @@ export default function SlatePage() {
           <h1 style={{ fontWeight: 700, fontSize: "20px", letterSpacing: "-0.03em", margin: 0 }}>Daily Slate</h1>
           <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-3)", marginTop: "3px" }}>{date}</div>
         </div>
-        <input
-          type="date" value={date}
-          onChange={(e) => changeDate(e.target.value)}
-          style={{ background: "var(--surface)", border: "1px solid var(--border-2)", borderRadius: "4px", padding: "6px 10px", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: "12px", outline: "none" }}
-        />
+        <DateNav date={date} onChange={changeDate} />
       </div>
 
       {error && <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--red)", padding: "10px 12px", border: "1px solid var(--red)", borderRadius: "4px", marginBottom: "16px" }}>Backend offline — uvicorn app.api.routes:app --port 8000</div>}
@@ -160,5 +189,13 @@ export default function SlatePage() {
         {games?.map((g, i) => <GameCard key={g.game_id} game={g} index={i} />)}
       </div>
     </div>
+  );
+}
+
+export default function SlatePage() {
+  return (
+    <Suspense fallback={<div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-3)", padding: "40px 0", textAlign: "center" }}>Loading…</div>}>
+      <SlatePageInner />
+    </Suspense>
   );
 }

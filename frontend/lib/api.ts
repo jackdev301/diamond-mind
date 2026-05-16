@@ -98,6 +98,10 @@ export type GameAnalysis = {
   offense_edge: string;
   ml_american_odds: number;
   implied_prob: number;
+  vig_free_implied: number;
+  overround: number;
+  edge_vig_free: number;
+  ev_per_dollar: number;
   component_fip: number;
   component_bullpen: number;
   component_offense: number;
@@ -106,6 +110,26 @@ export type GameAnalysis = {
   component_weather: number;
   component_rest: number;
   component_park: number;
+  // ── Quant layer (PhD-level) ──────────────────────────────
+  q_prop_vig_free: number;   // proportional devig (Sonnet 4.6 theory)
+  q_shin_vig_free: number;   // Shin devig (Opus 4.7)
+  q_shin_z: number;          // estimated insider proportion
+  q_p_model: number;
+  q_p_shrunk: number;        // after Bayesian shrinkage to market
+  q_shrink_weight: number;
+  q_edge_naive: number;
+  q_edge_quant: number;      // honest edge
+  q_edge_sd: number;
+  q_prob_positive: number;   // P(edge > 0)
+  q_ci_low: number;
+  q_ci_high: number;
+  q_effective_n: number;
+  q_kelly_full: number;
+  q_kelly_sized: number;
+  q_kelly_mult: number;      // derived multiplier
+  q_growth_rate: number;     // expected log-growth per bet
+  q_doubling_bets: number;   // 0 = never
+  q_evidence_quality: number;
   // from picks endpoint
   game_date?: string;
   venue?: string;
@@ -191,4 +215,32 @@ export const api = {
     get<TeamBatting>(`/teams/${teamId}/batting?as_of=${date}&window=l10`),
   context: (gameId: number, asOf: string) =>
     get<GameContext>(`/games/${gameId}/context?as_of=${asOf}`),
+  quantVerify: (modelProb: number, sideOdds: number, otherOdds: number, evidence: number) =>
+    get<QuantVerify>(
+      `/quant/verify?model_prob=${modelProb}&side_odds=${sideOdds}&other_odds=${otherOdds}&evidence_quality=${evidence}`,
+    ),
+};
+
+export type QuantVerify = {
+  prop_vig_free: number;
+  shin_vig_free: number;
+  shin_z: number;
+  booksum: number;
+  p_model: number;
+  p_shrunk: number;
+  shrink_weight: number;
+  edge_naive: number;
+  edge_quant: number;
+  edge_sd: number;
+  prob_positive: number;
+  ci_low: number;
+  ci_high: number;
+  effective_n: number;
+  kelly_full: number;
+  kelly_sized: number;
+  kelly_multiplier: number;
+  growth_rate: number;
+  doubling_bets: number | null;
+  ev_per_dollar: number;
+  recommendation: string;
 };

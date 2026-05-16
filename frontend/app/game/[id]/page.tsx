@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api, type GameContext, type WeatherData, type GameAnalysis, type TeamBatting } from "@/lib/api";
 import { teamLogoUrl } from "@/lib/team-logos";
+import { Gauge, DuelBar, MethodCompare, GrowthReadout } from "@/components/quant";
 
 function TeamLogo({ abbr, size = 40 }: { abbr: string; size?: number }) {
   return (
@@ -300,126 +301,178 @@ function AnalysisPanel({ a }: { a: GameAnalysis }) {
   const tc = tierColor(a.ml_tier);
   const isActionable = a.ml_lean !== "PASS" && a.ml_tier !== "AVOID";
   const leanAbbr = a.ml_lean === "HOME" ? a.home_team_abbr : a.away_team_abbr;
+  const evPct = a.ev_per_dollar != null ? a.ev_per_dollar * 100 : null;
+  const cardClass = a.ml_tier === "STRONG LEAN" ? "card-strong-lean" : a.ml_tier === "LEAN" ? "card-lean" : "";
 
   return (
     <div style={{ marginBottom: "24px" }}>
-      <div style={{ fontSize: "11px", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-2)", marginBottom: "12px" }}>
-        Model Analysis
-      </div>
+      <div className="section-label">Model Verdict</div>
 
-      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `3px solid ${tc}`, borderRadius: "6px", padding: "20px" }}>
-        {/* Top row */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px", marginBottom: "20px" }}>
-          {/* Moneyline pick */}
+      <div className={cardClass} style={{
+        background: "var(--surface)",
+        border: `1px solid ${isActionable ? tc : "var(--border)"}`,
+        borderRadius: "4px",
+        overflow: "hidden",
+      }}>
+        {/* Verdict header */}
+        <div style={{
+          padding: "16px 20px",
+          borderBottom: "1px solid var(--border)",
+          background: isActionable ? `rgba(${a.ml_tier === "STRONG LEAN" ? "63,185,80" : "88,166,255"},0.04)` : "transparent",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "16px",
+        }}>
           <div>
-            <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "6px" }}>Moneyline Pick</div>
-            <div style={{ fontWeight: 700, fontSize: "18px", color: tc, letterSpacing: "-0.02em" }}>
-              {isActionable ? `${leanAbbr} to win` : a.ml_tier}
+            <div style={{ fontFamily: "var(--font-display)", fontSize: "22px", fontWeight: 800, color: tc, letterSpacing: "0.02em", textTransform: "uppercase", lineHeight: 1 }}>
+              {isActionable ? `${leanAbbr} ML` : a.ml_tier}
             </div>
             {isActionable && (
-              <div style={{ fontSize: "11px", color: "var(--text-2)", marginTop: "4px", lineHeight: 1.5 }}>
-                <span style={{ fontFamily: "var(--font-mono)" }}>{a.ml_american_odds > 0 ? "+" : ""}{a.ml_american_odds}</span>
-                {" "}odds · book implies{" "}
-                <span style={{ fontFamily: "var(--font-mono)" }}>{Math.round(a.implied_prob * 100)}%</span>
-                {" "}win chance
-              </div>
-            )}
-            {isActionable && (
-              <div style={{ fontSize: "11px", color: "var(--green)", marginTop: "4px", lineHeight: 1.5 }}>
-                Our model says{" "}
-                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>{Math.round(a.ml_confidence * 100)}%</span>
-                {" "}— a{" "}
-                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>+{((a.ml_confidence - a.implied_prob) * 100).toFixed(1)}%</span>
-                {" "}edge over the book
-              </div>
-            )}
-            {isActionable && (
-              <div style={{ fontSize: "11px", color: "var(--text-3)", marginTop: "4px" }}>
-                Kelly bet size: <span style={{ fontFamily: "var(--font-mono)" }}>{(a.ml_kelly_fraction * 100).toFixed(1)}%</span> of bankroll
+              <div style={{ fontSize: "11px", color: "var(--text-2)", marginTop: "5px" }}>
+                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--text)" }}>
+                  {a.ml_american_odds > 0 ? "+" : ""}{a.ml_american_odds}
+                </span>
+                {" "}· {a.ml_tier}
               </div>
             )}
           </div>
 
-          {/* Win Probability */}
-          <div>
-            <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "6px" }}>Model Win Chance</div>
-            <div style={{ fontSize: "13px", color: "var(--text)", marginBottom: "4px" }}>
-              <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>{Math.round(a.model_home_win_prob * 100)}%</span>
-              {" "}{a.home_team_abbr} (home)
+          {isActionable && (
+            <div style={{ display: "flex", gap: "24px", textAlign: "right" }}>
+              <div>
+                <div className="data-label" style={{ textAlign: "right" }}>EV / dollar</div>
+                <div style={{
+                  fontFamily: "var(--font-mono)",
+                  fontWeight: 700,
+                  fontSize: "20px",
+                  color: evPct != null && evPct > 0 ? "var(--green)" : "var(--red)",
+                  lineHeight: 1.1,
+                }}>
+                  {evPct != null ? `${evPct > 0 ? "+" : ""}${evPct.toFixed(1)}¢` : "—"}
+                </div>
+                <div style={{ fontSize: "9px", color: "var(--text-3)", marginTop: "2px" }}>per $1 wagered</div>
+              </div>
+              <div>
+                <div className="data-label" style={{ textAlign: "right" }}>Kelly</div>
+                <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "20px", color: "var(--text)", lineHeight: 1.1 }}>
+                  {(a.ml_kelly_fraction * 100).toFixed(1)}%
+                </div>
+                <div style={{ fontSize: "9px", color: "var(--text-3)", marginTop: "2px" }}>of bankroll</div>
+              </div>
             </div>
-            <div style={{ fontSize: "13px", color: "var(--text-2)" }}>
-              <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>{Math.round(a.model_away_win_prob * 100)}%</span>
-              {" "}{a.away_team_abbr} (away)
+          )}
+        </div>
+
+        {/* Quant verdict — gauge + duel + growth + method comparison */}
+        <div style={{ padding: "18px 20px", borderBottom: "1px solid var(--border)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 150px", gap: "20px", alignItems: "center", marginBottom: "16px" }}>
+            <div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-2)", marginBottom: "10px" }}>
+                model {(a.q_p_model * 100).toFixed(1)}% → shrunk{" "}
+                <strong style={{ color: "var(--text)" }}>{(a.q_p_shrunk * 100).toFixed(1)}%</strong>{" "}
+                vs Shin market {(a.q_shin_vig_free * 100).toFixed(1)}%
+              </div>
+              <DuelBar model={a.q_p_shrunk} market={a.q_shin_vig_free} lower={a.q_ci_low} upper={a.q_ci_high} />
             </div>
-            <div style={{ fontSize: "10px", color: "var(--text-3)", marginTop: "6px", lineHeight: 1.4 }}>
-              Based on starting pitching, bullpen, offense, recent form, and park
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <Gauge p={a.q_prob_positive} size={140} />
             </div>
           </div>
-
-          {/* Total runs */}
-          <div>
-            <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "6px" }}>Combined Runs (O/U)</div>
-            <div style={{ fontWeight: 700, fontSize: "18px", letterSpacing: "-0.02em", color: a.total_lean === "OVER" ? "var(--amber)" : a.total_lean === "UNDER" ? "var(--blue)" : "var(--text-3)" }}>
-              {a.total_lean === "PASS" ? "No lean" : a.total_lean}
+          <GrowthReadout a={a} />
+          {isActionable && (
+            <div style={{ marginTop: "16px" }}>
+              <MethodCompare a={a} />
             </div>
-            <div style={{ fontSize: "11px", color: "var(--text-2)", marginTop: "4px" }}>
-              Model projects <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>{a.projected_total.toFixed(1)}</span> total runs
+          )}
+        </div>
+
+        {/* Win probs + total */}
+        <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0" }}>
+          <div style={{ padding: "0 14px 0 0", borderRight: "1px solid var(--border)" }}>
+            <div className="data-label" style={{ marginBottom: "8px" }}>Win Probability</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {[
+                { abbr: a.home_team_abbr, prob: a.model_home_win_prob, home: true },
+                { abbr: a.away_team_abbr, prob: a.model_away_win_prob, home: false },
+              ].map(({ abbr, prob }) => (
+                <div key={abbr} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "10px", color: "var(--text-3)", width: "30px" }}>{abbr}</span>
+                  <div className="stat-bar-track" style={{ flex: 1 }}>
+                    <div className="stat-bar-fill" style={{ "--fill": `${prob * 100}%`, background: "var(--blue)" } as React.CSSProperties} />
+                  </div>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", fontWeight: 600, color: "var(--text)", width: "34px", textAlign: "right" }}>
+                    {(prob * 100).toFixed(1)}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ padding: "0 14px", borderRight: "1px solid var(--border)" }}>
+            <div className="data-label" style={{ marginBottom: "8px" }}>Total (O/U)</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "18px", color: a.total_lean === "OVER" ? "var(--amber)" : a.total_lean === "UNDER" ? "var(--blue)" : "var(--text-3)" }}>
+              {a.total_lean === "PASS" ? "NO LEAN" : a.total_lean}
+            </div>
+            <div style={{ fontSize: "10px", color: "var(--text-3)", marginTop: "4px" }}>
+              proj <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-2)" }}>{a.projected_total.toFixed(1)}</span> runs
+            </div>
+          </div>
+          <div style={{ padding: "0 0 0 14px" }}>
+            <div className="data-label" style={{ marginBottom: "8px" }}>Base Rate</div>
+            <div style={{ fontSize: "10px", color: "var(--text-2)", lineHeight: 1.6 }}>
+              Home adv: <span style={{ fontFamily: "var(--font-mono)", color: "var(--text)" }}>53.5%</span><br/>
+              Vig: <span style={{ fontFamily: "var(--font-mono)", color: "var(--text)" }}>{a.overround != null ? `${((a.overround - 1) * 100).toFixed(1)}%` : "—"}</span><br/>
+              Overround: <span style={{ fontFamily: "var(--font-mono)", color: "var(--text)" }}>{a.overround != null ? a.overround.toFixed(4) : "—"}</span>
             </div>
           </div>
         </div>
 
-        {/* Component edges */}
-        {(a.sp_advantage || a.bullpen_edge || a.offense_edge) && (
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "14px" }}>
-            {a.sp_advantage && <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--text-2)", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "3px", padding: "3px 8px" }}>SP: {a.sp_advantage}</span>}
-            {a.bullpen_edge && <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--text-2)", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "3px", padding: "3px 8px" }}>BP: {a.bullpen_edge}</span>}
-          </div>
-        )}
-
-        {/* Component breakdown */}
+        {/* Component waterfall */}
         {(() => {
           const homeAbbr = a.home_team_abbr;
           const awayAbbr = a.away_team_abbr;
           const components = [
-            { label: "Starting Pitcher (FIP)", tooltip: "FIP = Fielding-Independent Pitching — measures strikeouts, walks, HR allowed", val: a.component_fip },
-            { label: "Bullpen",                tooltip: "Comparative bullpen vulnerability and fatigue today", val: a.component_bullpen },
-            { label: "Offense",                tooltip: "Hitting quality via wOBA — Weighted On-Base Average (lg avg .310)", val: a.component_offense },
-            { label: "Recent Form",            tooltip: "Win/loss trend over last 10 games", val: a.component_trend },
-            { label: "Strikeout Matchup",      tooltip: "Pitcher K-rate vs opposing lineup's strikeout tendency", val: a.component_k_matchup },
-            { label: "Weather",                tooltip: "Wind and temperature effects on run scoring", val: a.component_weather },
-            { label: "Pitcher Rest",           tooltip: "<4 days = short rest penalty; 8+ days = possible rust", val: a.component_rest },
-            { label: "Park Factor",            tooltip: "How this ballpark boosts or suppresses scoring vs league avg", val: a.component_park },
+            { label: "SP / FIP",        val: a.component_fip,       note: "Fielding-independent pitching differential" },
+            { label: "Bullpen",         val: a.component_bullpen,   note: "Vulnerability & fatigue gap" },
+            { label: "Offense",         val: a.component_offense,   note: "wOBA + R/G vs RA/G" },
+            { label: "Form / Splits",   val: a.component_trend,     note: "Trend, H2H, home/road records" },
+            { label: "K Matchup",       val: a.component_k_matchup, note: "SP K/9 vs lineup K%" },
+            { label: "Weather",         val: a.component_weather,   note: "Wind + temp run scoring effect" },
+            { label: "Rest",            val: a.component_rest,      note: "Pitcher days rest + pitch count" },
+            { label: "Park",            val: a.component_park,      note: "Ballpark run factor" },
           ].filter(c => Math.abs(c.val) > 0.001);
-          if (components.length === 0) return null;
+          if (!components.length) return null;
           const maxAbs = Math.max(...components.map(c => Math.abs(c.val)), 0.01);
           return (
-            <div style={{ paddingTop: "14px", borderTop: "1px solid var(--border)", marginBottom: "14px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "10px" }}>
-                <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase" }}>Model Breakdown</div>
-                <div style={{ display: "flex", gap: "12px", fontSize: "10px", color: "var(--text-3)" }}>
-                  <span style={{ color: "var(--red)" }}>← favors {awayAbbr}</span>
-                  <span style={{ color: "var(--green)" }}>favors {homeAbbr} →</span>
+            <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
+                <div className="data-label">Factor Waterfall</div>
+                <div style={{ fontSize: "9px", color: "var(--text-3)", display: "flex", gap: "12px" }}>
+                  <span style={{ color: "var(--red)" }}>← {awayAbbr}</span>
+                  <span style={{ color: "var(--green)" }}>{homeAbbr} →</span>
                 </div>
               </div>
-              {components.map(({ label, tooltip, val }) => {
-                const pct = (Math.abs(val) / maxAbs) * 100;
+              {components.map(({ label, val, note }) => {
+                const pct = (Math.abs(val) / maxAbs) * 80;
                 const color = val > 0 ? "var(--green)" : "var(--red)";
                 return (
-                  <div key={label} style={{ marginBottom: "8px" }}>
+                  <div key={label} style={{ marginBottom: "10px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
-                      <span style={{ fontFamily: "var(--font-body)", fontSize: "11px", color: "var(--text-2)" }}>{label}</span>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color, fontWeight: 600 }}>
-                        {val > 0 ? "+" : ""}{(val * 100).toFixed(1)}%
+                      <div>
+                        <span style={{ fontSize: "11px", color: "var(--text-2)", fontFamily: "var(--font-mono)" }}>{label}</span>
+                        <span style={{ fontSize: "9px", color: "var(--text-3)", marginLeft: "8px" }}>{note}</span>
+                      </div>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color, fontWeight: 700 }}>
+                        {val > 0 ? "+" : ""}{(val * 100).toFixed(2)}%
                       </span>
                     </div>
-                    <div style={{ fontSize: "10px", color: "var(--text-3)", marginBottom: "3px", lineHeight: 1.3 }}>{tooltip}</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
                       <div style={{ flex: 1, display: "flex", justifyContent: "flex-end" }}>
-                        {val < 0 && <div style={{ width: `${pct}%`, height: "5px", background: color, borderRadius: "2px" }} />}
+                        {val < 0 && <div style={{ width: `${pct}%`, height: "4px", background: color, borderRadius: "1px" }} />}
                       </div>
-                      <div style={{ width: "2px", height: "10px", background: "var(--border-2)", flexShrink: 0 }} />
+                      <div style={{ width: "1px", height: "8px", background: "var(--border-2)", flexShrink: 0 }} />
                       <div style={{ flex: 1 }}>
-                        {val > 0 && <div style={{ width: `${pct}%`, height: "5px", background: color, borderRadius: "2px" }} />}
+                        {val > 0 && <div style={{ width: `${pct}%`, height: "4px", background: color, borderRadius: "1px" }} />}
                       </div>
                     </div>
                   </div>
@@ -431,19 +484,21 @@ function AnalysisPanel({ a }: { a: GameAnalysis }) {
 
         {/* Key factors */}
         {a.key_factors.length > 0 && (
-          <div style={{ paddingTop: "14px", borderTop: "1px solid var(--border)" }}>
-            <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "8px" }}>Key Factors</div>
+          <div style={{ padding: "14px 20px", borderBottom: a.cautions.length > 0 ? "1px solid var(--border)" : "none" }}>
+            <div className="data-label" style={{ marginBottom: "8px" }}>Key Factors</div>
             {a.key_factors.map((f, i) => (
-              <div key={i} style={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--text-2)", marginBottom: "4px" }}>· {f}</div>
+              <div key={i} style={{ fontSize: "11px", color: "var(--text-2)", marginBottom: "4px", paddingLeft: "8px", borderLeft: "1px solid var(--border-2)" }}>
+                {f}
+              </div>
             ))}
           </div>
         )}
 
         {/* Cautions */}
         {a.cautions.length > 0 && (
-          <div style={{ marginTop: "10px" }}>
+          <div style={{ padding: "12px 20px", background: "rgba(240,136,62,0.04)" }}>
             {a.cautions.map((c, i) => (
-              <div key={i} style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--orange)", marginBottom: "2px" }}>{c}</div>
+              <div key={i} style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--orange)", marginBottom: "3px" }}>{c}</div>
             ))}
           </div>
         )}
@@ -542,9 +597,14 @@ function ModelMethodologyPanel({ homeAbbr, awayAbbr, analysis }: {
           />
 
           <MathBlock
-            label="Step 6 — Edge and Kelly Bet Sizing"
-            formula={`Book implied% = |odds| / (|odds| + 100)   [for negative odds like −110]\nBook implied% = 100 / (odds + 100)        [for positive odds]\n\nEdge = model_probability − book_implied%\n\nKelly fraction = (b × p − q) / b  ×  0.25\n  where  b = payout per $1 risked\n         p = model win probability\n         q = 1 − p  (lose probability)`}
-            explanation={`The Kelly Criterion is a mathematical formula that tells you what fraction of your bankroll to bet to maximize long-run growth. We use "fractional Kelly" (×0.25) as a safety margin — full Kelly is theoretically optimal but volatile in practice. Only bet when edge > 3% (LEAN) or edge > 6% (STRONG LEAN).`}
+            label="Step 6 — Vig Removal (Critical)"
+            formula={`raw_home = |home_odds| / (|home_odds| + 100)\nraw_away = |away_odds| / (|away_odds| + 100)\n\noverround  = raw_home + raw_away          // always > 1.0\nvig_free_home = raw_home / overround      // Pinnacle method\nvig_free_away = raw_away / overround\n\nExample: DK −115/−115\n  raw = 0.5349 + 0.5349 = 1.0698  (6.98% vig)\n  vig_free = 0.5349 / 1.0698 = 0.5000`}
+            explanation={`Raw implied probabilities from both sides always sum to MORE than 100% — that excess is the bookmaker's margin (vig/juice). A typical DraftKings -115/-115 line has ~7% overround. Comparing model probability to RAW implied understates edge by the full vig — if you see a 52% implied probability on a -110 line, the vig-free number is 50%. We compare model output to the vig-free probability only.`}
+          />
+          <MathBlock
+            label="Step 7 — Edge, EV, and Kelly Bet Sizing"
+            formula={`Edge (vig-free) = model_prob − vig_free_implied\n\nEV per dollar = b × p − q\n  where  b = decimal_odds − 1\n         p = model win probability\n         q = 1 − p\n\nKelly fraction = (b × p − q) / b  ×  0.25\n\nExample: model 58%, DK −115\n  b = 100/115 = 0.870\n  EV = 0.870 × 0.58 − 0.42 = +0.0846  (+8.5¢ per $1)\n  Kelly = (0.870×0.58 − 0.42) / 0.870 × 0.25 = 2.4% of bankroll`}
+            explanation={`The Kelly Criterion maximizes long-run bankroll growth. We use fractional Kelly (×0.25) — full Kelly is mathematically optimal but has catastrophic drawdowns in practice due to model error. EV per dollar is the clearest signal: +8.5¢ means for every $100 wagered, you expect +$8.50 in long-run profit. Tier thresholds: LEAN = +2.5% vig-free edge, STRONG LEAN = +5% vig-free edge.`}
           />
 
           {analysis && (
@@ -552,12 +612,15 @@ function ModelMethodologyPanel({ homeAbbr, awayAbbr, analysis }: {
               <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-3)", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.04em" }}>This Game — Numbers</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
                 {[
-                  { label: `${homeAbbr} win prob`, val: `${Math.round(analysis.model_home_win_prob * 100)}%` },
-                  { label: `${awayAbbr} win prob`, val: `${Math.round(analysis.model_away_win_prob * 100)}%` },
-                  { label: "Book implied%", val: `${Math.round(analysis.implied_prob * 100)}%` },
-                  { label: "Model edge", val: analysis.ml_lean !== "PASS" ? `+${((analysis.ml_confidence - analysis.implied_prob) * 100).toFixed(1)}%` : "N/A" },
+                  { label: `${homeAbbr} model prob`, val: `${(analysis.model_home_win_prob * 100).toFixed(1)}%` },
+                  { label: `${awayAbbr} model prob`, val: `${(analysis.model_away_win_prob * 100).toFixed(1)}%` },
+                  { label: "Vig-free implied", val: `${((analysis.vig_free_implied ?? analysis.implied_prob) * 100).toFixed(1)}%` },
+                  { label: "Raw implied (incl vig)", val: `${(analysis.implied_prob * 100).toFixed(1)}%` },
+                  { label: "Book vig", val: analysis.overround != null ? `${((analysis.overround - 1) * 100).toFixed(2)}%` : "—" },
+                  { label: "Edge (vig-free)", val: analysis.edge_vig_free != null && analysis.ml_lean !== "PASS" ? `${analysis.edge_vig_free >= 0 ? "+" : ""}${(analysis.edge_vig_free * 100).toFixed(2)}%` : "N/A" },
+                  { label: "EV per dollar", val: analysis.ev_per_dollar != null && analysis.ml_lean !== "PASS" ? `${analysis.ev_per_dollar >= 0 ? "+" : ""}${(analysis.ev_per_dollar * 100).toFixed(2)}¢` : "N/A" },
+                  { label: "Kelly fraction", val: analysis.ml_kelly_fraction > 0 ? `${(analysis.ml_kelly_fraction * 100).toFixed(1)}%` : "0% (no bet)" },
                   { label: "Projected total", val: `${analysis.projected_total.toFixed(1)} runs` },
-                  { label: "Kelly fraction", val: analysis.ml_kelly_fraction > 0 ? `${(analysis.ml_kelly_fraction * 100).toFixed(1)}% of bankroll` : "0% (no bet)" },
                 ].map(({ label, val }) => (
                   <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid var(--border)" }}>
                     <span style={{ fontSize: "11px", color: "var(--text-3)" }}>{label}</span>
@@ -575,6 +638,8 @@ function ModelMethodologyPanel({ homeAbbr, awayAbbr, analysis }: {
 
 export default function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const asOf = searchParams.get("date") ?? new Date().toISOString().split("T")[0];
   const [ctx, setCtx] = useState<GameContext | null>(null);
   const [homeBatting, setHomeBatting] = useState<TeamBatting | null>(null);
   const [awayBatting, setAwayBatting] = useState<TeamBatting | null>(null);
@@ -582,16 +647,15 @@ export default function GameDetailPage() {
 
   useEffect(() => {
     const gameId = Number(id);
-    const today = new Date().toISOString().split("T")[0];
-    api.context(gameId, today).then((c) => {
+    api.context(gameId, asOf).then((c) => {
       setCtx(c);
       setLoading(false);
       if (c) {
-        api.batting(c.home_team_id, today).then(d => setHomeBatting(d));
-        api.batting(c.away_team_id, today).then(d => setAwayBatting(d));
+        api.batting(c.home_team_id, asOf).then(d => setHomeBatting(d));
+        api.batting(c.away_team_id, asOf).then(d => setAwayBatting(d));
       }
     });
-  }, [id]);
+  }, [id, searchParams]);
 
   if (loading) return <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-3)", padding: "40px 0", textAlign: "center" }}>Loading…</div>;
   if (!ctx) return <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--red)" }}>Game not found.</div>;
@@ -600,8 +664,8 @@ export default function GameDetailPage() {
 
   return (
     <div>
-      <Link href="/" style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-2)", textDecoration: "none", letterSpacing: "0.05em" }}>
-        ← Slate
+      <Link href={`/?date=${asOf}`} style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-2)", textDecoration: "none", letterSpacing: "0.05em" }}>
+        ← Slate · {asOf}
       </Link>
 
       <div style={{ marginTop: "16px", marginBottom: "28px", borderBottom: "1px solid var(--border)", paddingBottom: "16px" }}>

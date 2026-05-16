@@ -60,6 +60,7 @@ MIN_SAMPLE = {
     WindowKey.L5: 3,
     WindowKey.L10: 6,
     WindowKey.L20: 12,
+    WindowKey.L90: 30,
     WindowKey.LAST_5_STARTS: 3,
     WindowKey.LAST_10_STARTS: 6,
     WindowKey.SEASON: 1,
@@ -295,6 +296,10 @@ def _window_date_range(
     """
     if window is WindowKey.SEASON:
         return date(as_of_date.year, 1, 1), as_of_date
+
+    if window is WindowKey.L90:
+        from datetime import timedelta
+        return as_of_date - timedelta(days=89), as_of_date
 
     if window in GAME_WINDOWS:
         n = GAME_WINDOWS[window]

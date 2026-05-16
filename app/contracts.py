@@ -18,6 +18,7 @@ from typing import List, Literal, Optional
 
 class WindowKey(str, Enum):
     SEASON = "season"
+    L90 = "l90"      # rolling 90-day — deeper history for small-sample regression
     L20 = "l20"
     L10 = "l10"
     L5 = "l5"

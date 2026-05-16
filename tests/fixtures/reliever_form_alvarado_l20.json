@@ -1,0 +1,18 @@
+{
+  "pitcher_id": 621237,
+  "pitcher_name": "Jose Alvarado",
+  "team_id": 143,
+  "role": "high_leverage",
+  "window": "l20",
+  "appearances": 18,
+  "innings_pitched": 17.1,
+  "era": 3.12,
+  "whip": 1.21,
+  "k_per_9": 12.5,
+  "bb_per_9": 4.2,
+  "trend_label": "stable_strong",
+  "as_of_date": "2026-05-15",
+  "fip": 3.30,
+  "inherited_runners_scored_pct": 0.18,
+  "insufficient_sample": false
+}

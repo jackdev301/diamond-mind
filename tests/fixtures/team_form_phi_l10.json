@@ -1,0 +1,15 @@
+{
+  "team_id": 143,
+  "team_abbr": "PHI",
+  "window": "l10",
+  "games": 10,
+  "runs_per_game": 5.4,
+  "runs_allowed_per_game": 3.8,
+  "team_ops": 0.768,
+  "record_wins": 7,
+  "record_losses": 3,
+  "trend_label": "heating_up",
+  "as_of_date": "2026-05-15",
+  "team_woba": 0.335,
+  "insufficient_sample": false
+}

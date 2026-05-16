@@ -16,7 +16,7 @@ The canonical project vision lives in [`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRI
 | 2 | Skeleton, config, contracts, smoke tests | done |
 | 3 | Database models | done |
 | 4 | Betting utilities | next (Track B) |
-| 5 | Recent form engine | Track A |
+| 5 | Recent form engine | done |
 | 6 | Bullpen intelligence | Track B |
 | 7 | MLB Stats API ingestion | Track A |
 | 8 | Odds / weather clients | Track B |

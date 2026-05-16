@@ -24,8 +24,8 @@
 - [x] Phase 2 — skeleton
 - [x] Data contracts drafted in `interfaces/data-contracts.md` (strawman; Jack to review)
 - [x] Phase 3 — DB models (`app/models/*`, `scripts/init_db.py`, 17 tables, tests green)
+- [x] Phase 5 — recent form engine (`app/features/recent_form.py`, fixtures, loaders for Track B)
 - [ ] Phase 7 — MLB Stats API ingestion ← next
-- [ ] Phase 5 — recent form engine
 - [ ] Phase 11 — CLI scripts (data side)
 
 ## Working order (so Jack is never blocked)

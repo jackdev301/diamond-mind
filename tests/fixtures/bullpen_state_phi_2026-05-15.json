@@ -1,0 +1,100 @@
+{
+  "team_id": 143,
+  "team_abbr": "PHI",
+  "as_of_date": "2026-05-15",
+  "yesterday_total_innings": 4.0,
+  "yesterday_total_pitches": 62,
+  "yesterday_relievers_used": 4,
+  "closer_pitched_yesterday": true,
+  "high_leverage_pitched_yesterday": [621237],
+  "back_to_back_relievers": [621237],
+  "three_in_four_relievers": [],
+  "relievers": [
+    {
+      "pitcher_id": 621237,
+      "pitcher_name": "Jose Alvarado",
+      "team_id": 143,
+      "role": "high_leverage",
+      "window": "l20",
+      "appearances": 18,
+      "innings_pitched": 17.1,
+      "era": 3.12,
+      "whip": 1.21,
+      "k_per_9": 12.5,
+      "bb_per_9": 4.2,
+      "trend_label": "stable_strong",
+      "as_of_date": "2026-05-15",
+      "fip": 3.30,
+      "inherited_runners_scored_pct": 0.18,
+      "insufficient_sample": false
+    },
+    {
+      "pitcher_id": 605294,
+      "pitcher_name": "Orion Kerkering",
+      "team_id": 143,
+      "role": "setup",
+      "window": "l20",
+      "appearances": 17,
+      "innings_pitched": 16.0,
+      "era": 2.81,
+      "whip": 1.06,
+      "k_per_9": 11.2,
+      "bb_per_9": 3.4,
+      "trend_label": "stable_strong",
+      "as_of_date": "2026-05-15",
+      "fip": 2.95,
+      "inherited_runners_scored_pct": 0.22,
+      "insufficient_sample": false
+    },
+    {
+      "pitcher_id": 595928,
+      "pitcher_name": "Matt Strahm",
+      "team_id": 143,
+      "role": "high_leverage",
+      "window": "l20",
+      "appearances": 19,
+      "innings_pitched": 19.2,
+      "era": 2.30,
+      "whip": 0.95,
+      "k_per_9": 10.1,
+      "bb_per_9": 1.8,
+      "trend_label": "stable_strong",
+      "as_of_date": "2026-05-15",
+      "fip": 2.85,
+      "inherited_runners_scored_pct": 0.14,
+      "insufficient_sample": false
+    }
+  ],
+  "recent_usage": [
+    {
+      "pitcher_id": 621237,
+      "pitcher_name": "Jose Alvarado",
+      "team_id": 143,
+      "role": "high_leverage",
+      "game_date": "2026-05-14",
+      "pitches": 22,
+      "innings": 1.0,
+      "appeared": true
+    },
+    {
+      "pitcher_id": 621237,
+      "pitcher_name": "Jose Alvarado",
+      "team_id": 143,
+      "role": "high_leverage",
+      "game_date": "2026-05-13",
+      "pitches": 18,
+      "innings": 1.0,
+      "appeared": true
+    },
+    {
+      "pitcher_id": 605294,
+      "pitcher_name": "Orion Kerkering",
+      "team_id": 143,
+      "role": "setup",
+      "game_date": "2026-05-14",
+      "pitches": 14,
+      "innings": 1.0,
+      "appeared": true
+    }
+  ]
+}

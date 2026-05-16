@@ -1,0 +1,14 @@
+{
+  "game_id": 778001,
+  "game_date": "2026-05-15",
+  "game_time_utc": "2026-05-15T23:05:00+00:00",
+  "home_team_id": 143,
+  "away_team_id": 121,
+  "home_team_abbr": "PHI",
+  "away_team_abbr": "NYM",
+  "venue": "Citizens Bank Park",
+  "is_doubleheader": false,
+  "game_number": 1,
+  "home_probable_starter_id": 554430,
+  "away_probable_starter_id": 605240
+}

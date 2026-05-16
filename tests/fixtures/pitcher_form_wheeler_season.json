@@ -1,0 +1,20 @@
+{
+  "pitcher_id": 554430,
+  "pitcher_name": "Zack Wheeler",
+  "team_id": 143,
+  "window": "season",
+  "starts": 9,
+  "innings_pitched": 56.2,
+  "era": 2.86,
+  "whip": 1.04,
+  "k_per_9": 10.3,
+  "bb_per_9": 2.1,
+  "hr_per_9": 0.8,
+  "avg_innings_per_start": 6.3,
+  "trend_label": "stable_strong",
+  "as_of_date": "2026-05-15",
+  "fip": 3.05,
+  "xfip": 3.20,
+  "avg_pitches_per_start": 96.5,
+  "insufficient_sample": false
+}

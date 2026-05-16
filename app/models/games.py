@@ -30,6 +30,8 @@ class Game(Base):
     away_score: Mapped[Optional[int]] = mapped_column()
     is_doubleheader: Mapped[bool] = mapped_column(default=False)
     game_number: Mapped[int] = mapped_column(default=1)
+    home_probable_starter_id: Mapped[Optional[int]] = mapped_column(ForeignKey("players.id"))
+    away_probable_starter_id: Mapped[Optional[int]] = mapped_column(ForeignKey("players.id"))
 
 
 class TeamGameLog(Base):

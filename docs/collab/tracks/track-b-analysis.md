@@ -23,20 +23,13 @@
 
 ## Status
 
-- [ ] Data contracts drafted in `interfaces/data-contracts.md` (joint, do this first with Arnav)
+- [x] Data contracts drafted in `interfaces/data-contracts.md` (Arnav shipped strawman v0.1; accepted as-is)
 - [ ] Phase 4 — betting utilities
-- [ ] Phase 6 — bullpen intelligence
+- [x] Phase 6 — bullpen intelligence (`app/features/bullpen_fatigue.py`, `bullpen_quality.py`, `bullpen_vulnerability.py`)
 - [ ] Phase 8 — odds/weather clients
 - [ ] Phase 9 — daily report generator
 - [ ] Phase 10 — Obsidian export
 - [ ] Phase 11 — CLI scripts (analysis side)
-
-## How to start without waiting on Arnav
-
-1. **First task is joint:** agree dataclass shapes in `interfaces/data-contracts.md`. Define what `TeamFormWindow`, `PitcherFormWindow`, `BullpenState`, `GameContext`, `OddsSnapshot`, etc. look like — field names, types, units.
-2. Arnav will commit fixture files (`tests/fixtures/*.json`) matching those shapes.
-3. From there, build all Phase 4 / 6 / 9 / 10 logic against fixtures. Zero DB dependency.
-4. When Arnav ships query helpers (handoff will land in `docs/collab/handoffs/`), wire them up — should be a one-line swap.
 
 ## Working agreements specific to Track B
 
@@ -47,7 +40,7 @@
 
 ## Currently blocked on
 
-- Data contracts. Once `interfaces/data-contracts.md` lands, you're unblocked through Phase 9.
+- Nothing. Phase 5 fixtures from Arnav will enable fixture-based tests, but Phase 4 and 9 can proceed without them.
 
 ## Notes for Jack's agent
 

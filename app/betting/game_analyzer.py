@@ -83,7 +83,14 @@ class GameAnalysis:
     sp_advantage: str = ""
     bullpen_edge: str = ""
     offense_edge: str = ""
-    implied_prob: float = 0.5238  # implied probability of the line used
+    implied_prob: float = 0.5238
+    # Component breakdown for transparency (each value = prob shift from that factor)
+    component_fip: float = 0.0
+    component_bullpen: float = 0.0
+    component_offense: float = 0.0
+    component_trend: float = 0.0
+    component_k_matchup: float = 0.0
+    component_weather: float = 0.0
 
 
 # ── Kelly criterion ────────────────────────────────────────────────────────────
@@ -252,6 +259,7 @@ def analyze_game(
     away_fip = _derive_fip(away_sp)
     sp_adj = fip_to_prob_adj(home_fip, away_fip)
     prob += sp_adj
+    comp_fip = sp_adj   # track for breakdown
     sp_adv, sp_factor = _sp_factor_str(home_sp, away_sp, sp_adj)
     if sp_factor:
         factors.append(sp_factor)
@@ -263,7 +271,9 @@ def analyze_game(
             side = "HOME" if k_diff > 0 else "AWAY"
             sp_name = home_sp.pitcher_name if k_diff > 0 else away_sp.pitcher_name
             factors.append(f"{side} SP K/9 edge: {sp_name} {max(home_sp.k_per_9, away_sp.k_per_9):.1f} K/9")
-            prob += k_diff * 0.005
+            adj = k_diff * 0.005
+            prob += adj
+            comp_fip += adj
 
     # BB/9 control edge — high walk rate signals instability
     for sp, side_label in [(home_sp, "HOME"), (away_sp, "AWAY")]:
@@ -271,6 +281,7 @@ def analyze_game(
             cautions.append(f"⚠ {side_label} SP walk rate {sp.bb_per_9:.1f} BB/9 — control concern")
             adj = -0.015 if side_label == "HOME" else +0.015
             prob += adj
+            comp_fip += adj
 
     # ERA vs FIP divergence — flags regression risk
     for sp, side_label in [(home_sp, "HOME"), (away_sp, "AWAY")]:
@@ -287,8 +298,9 @@ def analyze_game(
                         f"{side_label} SP ERA ({sp.era:.2f}) above FIP ({fip_val:.2f}) — positive regression candidate"
                     )
 
-    # K% matchup edge — high-K pitcher vs high-strikeout team amplifies SP advantage
-    K_RATE_HIGH = 0.24   # team K% where pitcher K dominance is amplified
+    # K% matchup edge
+    K_RATE_HIGH = 0.24
+    comp_k = 0.0
     for sp, team_k_rate, side_label, opp_label in [
         (home_sp, away_k_rate, "HOME", "AWAY"),
         (away_sp, home_k_rate, "AWAY", "HOME"),
@@ -299,8 +311,9 @@ def analyze_game(
             )
             adj = 0.012 if side_label == "HOME" else -0.012
             prob += adj
+            comp_k += adj
 
-    # Short-start amplifier — if SP averages < 5 IP, bullpen matters more
+    # Short-start amplifier
     for sp, bp, side_label in [(home_sp, home_bullpen, "HOME"), (away_sp, away_bullpen, "AWAY")]:
         if sp and sp.avg_innings_per_start and sp.avg_innings_per_start < 5.0 and not sp.insufficient_sample:
             cautions.append(
@@ -310,9 +323,8 @@ def analyze_game(
     # 3. Bullpen vulnerability
     home_vuln = home_bullpen.vulnerability_score if home_bullpen else 50.0
     away_vuln = away_bullpen.vulnerability_score if away_bullpen else 50.0
-    vuln_diff = away_vuln - home_vuln   # positive = home bullpen is better
+    vuln_diff = away_vuln - home_vuln
 
-    # Amplify bullpen weight when starter is short (< 5.5 IP avg)
     bp_scale = BULLPEN_VULN_SCALE
     if home_sp and home_sp.avg_innings_per_start and home_sp.avg_innings_per_start < 5.5:
         bp_scale *= 1.4
@@ -321,6 +333,7 @@ def analyze_game(
 
     bp_adj = vuln_diff * bp_scale
     prob += bp_adj
+    comp_bp = bp_adj
 
     bp_edge = ""
     if abs(vuln_diff) >= 10:
@@ -333,6 +346,7 @@ def analyze_game(
     # 4. Offense / defense
     off_adj, off_str = _offense_adj(home_form, away_form)
     prob += off_adj
+    comp_off = off_adj
     if off_str:
         factors.append(off_str)
 
@@ -341,6 +355,7 @@ def analyze_game(
     away_trend = _trend_adj(away_form)
     trend_adj = home_trend - away_trend
     prob += trend_adj
+    comp_trend = trend_adj
     if abs(trend_adj) >= 0.02:
         side = "HOME" if trend_adj > 0 else "AWAY"
         factors.append(f"{side} team trending better recently")
@@ -427,6 +442,7 @@ def analyze_game(
 
     # Weather adjustment
     weather_total_adj, weather_factor, weather_caution = _weather_adj(weather)
+    comp_weather = weather_total_adj * 0.01  # rough win-prob proxy for breakdown display
     projected_total = round(projected_total + weather_total_adj, 1)
     if weather_factor:
         factors.append(weather_factor)
@@ -470,4 +486,10 @@ def analyze_game(
         bullpen_edge=bp_edge,
         offense_edge=off_str,
         implied_prob=implied,
+        component_fip=round(comp_fip, 4),
+        component_bullpen=round(comp_bp, 4),
+        component_offense=round(comp_off, 4),
+        component_trend=round(comp_trend, 4),
+        component_k_matchup=round(comp_k, 4),
+        component_weather=round(comp_weather, 4),
     )

@@ -93,6 +93,12 @@ export type GameAnalysis = {
   offense_edge: string;
   ml_american_odds: number;
   implied_prob: number;
+  component_fip: number;
+  component_bullpen: number;
+  component_offense: number;
+  component_trend: number;
+  component_k_matchup: number;
+  component_weather: number;
   // from picks endpoint
   game_date?: string;
   venue?: string;

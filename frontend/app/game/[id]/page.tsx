@@ -273,6 +273,46 @@ function AnalysisPanel({ a }: { a: GameAnalysis }) {
           </div>
         )}
 
+        {/* Component breakdown */}
+        {(() => {
+          const components = [
+            { label: "SP / FIP", val: a.component_fip },
+            { label: "Bullpen", val: a.component_bullpen },
+            { label: "Offense", val: a.component_offense },
+            { label: "Trend",   val: a.component_trend },
+            { label: "K% Mtch", val: a.component_k_matchup },
+            { label: "Weather", val: a.component_weather },
+          ].filter(c => Math.abs(c.val) > 0.001);
+          if (components.length === 0) return null;
+          const maxAbs = Math.max(...components.map(c => Math.abs(c.val)), 0.01);
+          return (
+            <div style={{ paddingTop: "14px", borderTop: "1px solid var(--border)", marginBottom: "14px" }}>
+              <div style={{ fontFamily: "var(--font-display)", fontSize: "10px", fontWeight: 700, letterSpacing: "0.1em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "10px" }}>Model Breakdown</div>
+              {components.map(({ label, val }) => {
+                const pct = (Math.abs(val) / maxAbs) * 100;
+                const color = val > 0 ? "var(--green)" : "var(--red)";
+                return (
+                  <div key={label} style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--text-3)", width: "52px", textAlign: "right" }}>{label}</span>
+                    <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "4px" }}>
+                      {val < 0 && <div style={{ flex: 1, display: "flex", justifyContent: "flex-end" }}>
+                        <div style={{ width: `${pct}%`, height: "6px", background: color, borderRadius: "2px" }} />
+                      </div>}
+                      <div style={{ width: "2px", height: "12px", background: "var(--border-2)", flexShrink: 0 }} />
+                      {val > 0 && <div style={{ flex: 1 }}>
+                        <div style={{ width: `${pct}%`, height: "6px", background: color, borderRadius: "2px" }} />
+                      </div>}
+                    </div>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color, width: "42px" }}>
+                      {val > 0 ? "+" : ""}{(val * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
         {/* Key factors */}
         {a.key_factors.length > 0 && (
           <div style={{ paddingTop: "14px", borderTop: "1px solid var(--border)" }}>

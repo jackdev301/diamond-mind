@@ -320,10 +320,21 @@ def game_weather(game_id: int, db: Session = Depends(_get_db)):
 
 @app.post("/report/polish")
 def polish_report_endpoint(body: dict):
-    """Polish a raw Markdown report with Claude. Returns raw if key missing."""
+    """Polish a raw Markdown report with Claude.
+
+    Returns {markdown, polished: bool, method: str}.
+    polished=False means no LLM was applied (no API key and no CLI found).
+    """
     raw = body.get("markdown", "")
     if not raw:
         raise HTTPException(400, "Field 'markdown' is required.")
+    from app.config import get_settings
     from app.llm.claude_client import polish_report
-    polished = polish_report(raw)
-    return {"markdown": polished}
+    markdown, was_polished = polish_report(raw)
+    if not was_polished:
+        method = "none"
+    elif get_settings().anthropic_api_key:
+        method = "sdk"
+    else:
+        method = "cli"
+    return {"markdown": markdown, "polished": was_polished, "method": method}

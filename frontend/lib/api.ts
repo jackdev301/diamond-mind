@@ -49,9 +49,14 @@ export type BullpenData = {
 
 export type PitcherForm = {
   pitcher_name: string;
-  era: number;
-  whip: number;
-  k_per_9: number;
+  era: number | null;
+  whip: number | null;
+  k_per_9: number | null;
+  bb_per_9: number | null;
+  hr_per_9: number | null;
+  fip: number | null;
+  babip: number | null;
+  avg_pitches_per_start: number | null;
   trend_label: string;
   insufficient_sample: boolean;
 };
@@ -106,6 +111,22 @@ export type GameAnalysis = {
   venue?: string;
 };
 
+export type TeamBatting = {
+  estimated_woba: number | null;
+  iso: number | null;
+  strikeout_rate: number | null;
+  walk_rate: number | null;
+  ops: number | null;
+  batting_avg: number | null;
+  on_base_pct: number | null;
+  slugging_pct: number | null;
+  stolen_bases: number;
+  caught_stealing: number;
+  stolen_base_success_rate: number | null;
+  games: number;
+  insufficient_sample: boolean;
+};
+
 export type WeatherData = {
   temperature_f: number | null;
   wind_speed_mph: number | null;
@@ -128,4 +149,6 @@ export const api = {
     get<GameAnalysis>(`/games/${gameId}/analyze?as_of=${asOf}`),
   picks: (date: string) =>
     get<GameAnalysis[]>(`/games/picks?game_date=${date}`),
+  batting: (teamId: number, date: string) =>
+    get<TeamBatting>(`/teams/${teamId}/batting?as_of=${date}&window=l10`),
 };

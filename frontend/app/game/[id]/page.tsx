@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { api, type GameBundle, type WeatherData, type GameAnalysis } from "@/lib/api";
+import { api, type GameBundle, type WeatherData, type GameAnalysis, type TeamBatting } from "@/lib/api";
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
@@ -98,6 +98,9 @@ function BullpenCard({ abbr, bp }: { abbr: string; bp: NonNullable<GameBundle["h
 }
 
 function StarterCard({ abbr, starter }: { abbr: string; starter: NonNullable<GameBundle["home_starter"]> | null }) {
+  const fipColor = starter?.fip != null
+    ? starter.fip <= 3.20 ? "var(--green)" : starter.fip >= 4.50 ? "var(--red)" : "var(--text)"
+    : "var(--text)";
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "6px", padding: "16px" }}>
       <Label>{abbr} Starting Pitcher</Label>
@@ -106,9 +109,29 @@ function StarterCard({ abbr, starter }: { abbr: string; starter: NonNullable<Gam
           <div style={{ fontWeight: 600, fontSize: "15px", marginBottom: "12px", color: "var(--text)", letterSpacing: "-0.01em" }}>
             {starter.pitcher_name}
           </div>
-          <StatRow label="ERA — Earned Run Average (runs allowed per 9 innings; lower = better)" value={starter.era?.toFixed(2)} />
-          <StatRow label="WHIP — Walks + Hits per Inning Pitched (baserunners allowed; lower = better)" value={starter.whip?.toFixed(2)} />
-          <StatRow label="K/9 — Strikeouts per 9 innings (swing-and-miss ability; higher = better)" value={starter.k_per_9?.toFixed(1)} />
+          <StatRow label="ERA — Earned Run Average (runs allowed per 9 inn.; lower = better)" value={starter.era?.toFixed(2)} />
+          {starter.fip != null && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
+              <span style={{ fontFamily: "var(--font-body)", fontSize: "13px", color: "var(--text-2)" }}>
+                FIP — Fielding-Independent Pitching (K, BB, HR only; luck-neutral; lg avg 3.20)
+              </span>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: "13px", color: fipColor, fontWeight: 600 }}>
+                {starter.fip.toFixed(2)}
+              </span>
+            </div>
+          )}
+          <StatRow label="WHIP — Walks + Hits per Inning (baserunners allowed; lower = better)" value={starter.whip?.toFixed(2)} />
+          <StatRow label="K/9 — Strikeouts per 9 innings (swing-and-miss; higher = better)" value={starter.k_per_9?.toFixed(1)} />
+          <StatRow label="BB/9 — Walks per 9 innings (control; lower = better; concern ≥ 4.5)" value={starter.bb_per_9?.toFixed(1)} />
+          {starter.babip != null && (
+            <StatRow
+              label={`BABIP — Batting Avg on Balls in Play (luck proxy; lg avg .298; ${starter.babip >= 0.340 ? "high = unlucky" : starter.babip <= 0.265 ? "low = lucky" : "normal range"})`}
+              value={starter.babip.toFixed(3)}
+            />
+          )}
+          {starter.avg_pitches_per_start != null && (
+            <StatRow label="Avg pitches/start (workload; concern ≥ 105 last outing)" value={starter.avg_pitches_per_start.toFixed(0)} />
+          )}
           <StatRow label="Recent trend" value={starter.trend_label?.replace(/_/g, " ")} mono={false} />
           {starter.insufficient_sample && (
             <div style={{ marginTop: "8px", fontSize: "11px", color: "var(--amber)" }}>
@@ -177,11 +200,13 @@ function CompareRow({ label, home, away, higherBetter = true, fmt = (v: number) 
   );
 }
 
-function TeamStatsCard({ homeAbbr, awayAbbr, homeForm, awayForm }: {
+function TeamStatsCard({ homeAbbr, awayAbbr, homeForm, awayForm, homeBatting, awayBatting }: {
   homeAbbr: string;
   awayAbbr: string;
   homeForm: FormWindow | null | undefined;
   awayForm: FormWindow | null | undefined;
+  homeBatting?: TeamBatting | null;
+  awayBatting?: TeamBatting | null;
 }) {
   const hf = homeForm as FormWindow | null;
   const af = awayForm as FormWindow | null;
@@ -197,6 +222,15 @@ function TeamStatsCard({ homeAbbr, awayAbbr, homeForm, awayForm }: {
       <CompareRow label="RA/G — Runs allowed per game" home={hf?.runs_allowed_per_game} away={af?.runs_allowed_per_game} higherBetter={false} fmt={v => v.toFixed(1)} />
       <CompareRow label="OPS — On-base + Slugging (overall hitting; lg avg ~.720)" home={hf?.team_ops} away={af?.team_ops} fmt={v => v.toFixed(3)} />
       <CompareRow label="wOBA — Weighted On-Base Avg (quality of contact; lg avg ~.310)" home={hf?.team_woba} away={af?.team_woba} fmt={v => v.toFixed(3)} />
+      {(homeBatting?.iso != null || awayBatting?.iso != null) && (
+        <CompareRow label="ISO — Isolated Power (SLG−AVG; extra-base hit strength; lg avg ~.162)" home={homeBatting?.iso ?? null} away={awayBatting?.iso ?? null} fmt={v => v.toFixed(3)} />
+      )}
+      {(homeBatting?.strikeout_rate != null || awayBatting?.strikeout_rate != null) && (
+        <CompareRow label="K% — Strikeout rate (lg avg 22.6%; lower = better contact)" home={homeBatting?.strikeout_rate ?? null} away={awayBatting?.strikeout_rate ?? null} higherBetter={false} fmt={v => `${(v * 100).toFixed(1)}%`} />
+      )}
+      {(homeBatting?.walk_rate != null || awayBatting?.walk_rate != null) && (
+        <CompareRow label="BB% — Walk rate (lg avg 8.5%; higher = more patient at plate)" home={homeBatting?.walk_rate ?? null} away={awayBatting?.walk_rate ?? null} fmt={v => `${(v * 100).toFixed(1)}%`} />
+      )}
       <CompareRow label="W — Wins (last 10 games)" home={hf?.record_wins} away={af?.record_wins} fmt={v => String(Math.round(v))} />
       <CompareRow label="L — Losses (last 10 games)" home={hf?.record_losses} away={af?.record_losses} higherBetter={false} fmt={v => String(Math.round(v))} />
       {(hf?.trend_label || af?.trend_label) && (
@@ -499,12 +533,21 @@ export default function GameDetailPage() {
   const [bundle, setBundle] = useState<GameBundle | null>(null);
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [analysis, setAnalysis] = useState<GameAnalysis | null>(null);
+  const [homeBatting, setHomeBatting] = useState<TeamBatting | null>(null);
+  const [awayBatting, setAwayBatting] = useState<TeamBatting | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const gameId = Number(id);
     const today = new Date().toISOString().split("T")[0];
-    api.bundle(gameId, today).then((b) => { setBundle(b); setLoading(false); });
+    api.bundle(gameId, today).then((b) => {
+      setBundle(b);
+      setLoading(false);
+      if (b) {
+        api.batting(b.home_team_id, today).then(d => setHomeBatting(d));
+        api.batting(b.away_team_id, today).then(d => setAwayBatting(d));
+      }
+    });
     api.weather(gameId).then((w) => setWeather(w));
     api.analyze(gameId, today).then((a) => setAnalysis(a));
   }, [id]);
@@ -538,6 +581,8 @@ export default function GameDetailPage() {
             awayAbbr={bundle.away_team_abbr}
             homeForm={(bundle.home_form as Record<string, unknown>)?.l10 as FormWindow}
             awayForm={(bundle.away_form as Record<string, unknown>)?.l10 as FormWindow}
+            homeBatting={homeBatting}
+            awayBatting={awayBatting}
           />
         </div>
       )}

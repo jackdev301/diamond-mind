@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { api, type Game, type BullpenData, type GameAnalysis } from "@/lib/api";
+import { api, type SlateGame, type BullpenData, type GameAnalysis } from "@/lib/api";
 import { teamLogoUrl } from "@/lib/team-logos";
 
 function TeamLogo({ abbr, size = 28 }: { abbr: string; size?: number }) {
@@ -45,19 +45,8 @@ function VulnBar({ abbr, bp }: { abbr: string; bp: BullpenData }) {
   );
 }
 
-function GameCard({ game, date, index }: { game: Game; date: string; index: number }) {
-  const [homeBp, setHomeBp] = useState<BullpenData | null>(null);
-  const [awayBp, setAwayBp] = useState<BullpenData | null>(null);
-  const [analysis, setAnalysis] = useState<GameAnalysis | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    api.bullpen(game.home_team_id, date).then(bp => { if (alive) setHomeBp(bp); });
-    api.bullpen(game.away_team_id, date).then(bp => { if (alive) setAwayBp(bp); });
-    api.analyze(game.game_id, date).then(a => { if (alive) setAnalysis(a); });
-    return () => { alive = false; };
-  }, [game, date]);
-
+function GameCard({ game, index }: { game: SlateGame; index: number }) {
+  const analysis: GameAnalysis | null = game.analysis;
   const hasTier = analysis && analysis.ml_tier !== "PASS" && analysis.ml_lean !== "PASS";
   const tc = hasTier ? tierColor(analysis!.ml_tier) : "var(--border-2)";
   const leanAbbr = analysis?.ml_lean === "HOME" ? game.home_team_abbr
@@ -75,7 +64,7 @@ function GameCard({ game, date, index }: { game: Game; date: string; index: numb
           borderRadius: "6px",
           padding: "14px 18px",
           display: "grid",
-          gridTemplateColumns: "1fr 120px 1fr",
+          gridTemplateColumns: "1fr 130px 1fr",
           gap: "16px",
           alignItems: "center",
         } as React.CSSProperties}
@@ -83,15 +72,11 @@ function GameCard({ game, date, index }: { game: Game; date: string; index: numb
         {/* Matchup */}
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <TeamLogo abbr={game.away_team_abbr} size={24} />
-            <span style={{ fontWeight: 600, fontSize: "15px", color: "var(--text)", letterSpacing: "-0.02em" }}>
-              {game.away_team_abbr}
-            </span>
+            <TeamLogo abbr={game.away_team_abbr} size={22} />
+            <span style={{ fontWeight: 600, fontSize: "15px", color: "var(--text)", letterSpacing: "-0.02em" }}>{game.away_team_abbr}</span>
             <span style={{ color: "var(--text-3)", fontSize: "13px" }}>@</span>
-            <TeamLogo abbr={game.home_team_abbr} size={24} />
-            <span style={{ fontWeight: 600, fontSize: "15px", color: "var(--text)", letterSpacing: "-0.02em" }}>
-              {game.home_team_abbr}
-            </span>
+            <TeamLogo abbr={game.home_team_abbr} size={22} />
+            <span style={{ fontWeight: 600, fontSize: "15px", color: "var(--text)", letterSpacing: "-0.02em" }}>{game.home_team_abbr}</span>
           </div>
           {game.venue && (
             <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-3)", marginTop: "3px" }}>{game.venue}</div>
@@ -107,7 +92,7 @@ function GameCard({ game, date, index }: { game: Game; date: string; index: numb
                   {analysis.ml_tier}
                 </div>
                 <div style={{ fontWeight: 600, fontSize: "14px", color: "var(--text)", marginTop: "2px" }}>
-                  {leanAbbr} ML
+                  {leanAbbr} to win
                 </div>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--text-2)", marginTop: "1px" }}>
                   {Math.round(analysis.ml_confidence * 100)}% · {(analysis.ml_kelly_fraction * 100).toFixed(1)}% K
@@ -124,9 +109,9 @@ function GameCard({ game, date, index }: { game: Game; date: string; index: numb
         {/* Bullpen */}
         <div>
           <div style={{ fontSize: "10px", fontWeight: 500, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>Bullpen vuln</div>
-          {awayBp && <VulnBar abbr={game.away_team_abbr} bp={awayBp} />}
-          {homeBp && <VulnBar abbr={game.home_team_abbr} bp={homeBp} />}
-          {!homeBp && !awayBp && <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-3)" }}>—</div>}
+          {game.away_bullpen && <VulnBar abbr={game.away_team_abbr} bp={game.away_bullpen} />}
+          {game.home_bullpen && <VulnBar abbr={game.home_team_abbr} bp={game.home_bullpen} />}
+          {!game.home_bullpen && !game.away_bullpen && <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-3)" }}>—</div>}
         </div>
       </div>
     </Link>
@@ -136,12 +121,18 @@ function GameCard({ game, date, index }: { game: Game; date: string; index: numb
 export default function SlatePage() {
   const today = new Date().toISOString().split("T")[0];
   const [date, setDate] = useState(today);
-  const [games, setGames] = useState<Game[] | null>(null);
+  const [games, setGames] = useState<SlateGame[] | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    api.games(date).then((g) => { if (!alive) return; if (g === null) setError(true); else setGames(g); });
+    setGames(null);
+    setError(false);
+    api.slate(date).then((g) => {
+      if (!alive) return;
+      if (g === null) setError(true);
+      else setGames(g);
+    });
     return () => { alive = false; };
   }, [date]);
 
@@ -166,7 +157,7 @@ export default function SlatePage() {
       {games?.length === 0 && <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-3)", padding: "40px 0", textAlign: "center" }}>No games for {date}.</div>}
 
       <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-        {games?.map((g, i) => <GameCard key={g.game_id} game={g} date={date} index={i} />)}
+        {games?.map((g, i) => <GameCard key={g.game_id} game={g} index={i} />)}
       </div>
     </div>
   );

@@ -11,13 +11,14 @@ Run with:
 from __future__ import annotations
 
 import dataclasses
-from datetime import date
-from typing import List, Optional
+import time
+from datetime import date, datetime
+from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import aliased
 from sqlalchemy.orm import Session
 
@@ -37,9 +38,15 @@ from app.models.entities import Player, Team
 from app.models.games import Game, PitcherGameLog, PlayerGameLog, TeamGameLog
 
 app = FastAPI(
-    title="diamond-mind API",
-    description="Data query layer for the MLB intelligence system.",
-    version="0.1.0",
+    title="Diamond Mind API",
+    description=(
+        "Deterministic MLB betting intelligence. All analysis is math-based — "
+        "no LLM inference, no fabricated stats. Data sourced from MLB Stats API "
+        "and The Odds API."
+    ),
+    version="0.3.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
 app.add_middleware(
@@ -49,6 +56,41 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ---------------------------------------------------------------------------
+# Analysis result cache  (game_id, as_of_date) → (result_dict, expires_at)
+# 5-minute TTL — analysis is deterministic given the DB snapshot, but odds
+# and ingested stats can change, so we don't cache indefinitely.
+# ---------------------------------------------------------------------------
+_ANALYSIS_CACHE: Dict[Tuple[int, date], Tuple[Any, float]] = {}
+_CACHE_TTL_SECONDS = 300
+
+def _cache_get(game_id: int, as_of: date) -> Optional[Any]:
+    entry = _ANALYSIS_CACHE.get((game_id, as_of))
+    if entry and time.monotonic() < entry[1]:
+        return entry[0]
+    _ANALYSIS_CACHE.pop((game_id, as_of), None)
+    return None
+
+def _cache_set(game_id: int, as_of: date, value: Any) -> None:
+    _ANALYSIS_CACHE[(game_id, as_of)] = (value, time.monotonic() + _CACHE_TTL_SECONDS)
+
+def _cache_invalidate_all() -> int:
+    count = len(_ANALYSIS_CACHE)
+    _ANALYSIS_CACHE.clear()
+    return count
+
+
+# ---------------------------------------------------------------------------
+# Timing middleware — adds X-Response-Time header to every response
+# ---------------------------------------------------------------------------
+@app.middleware("http")
+async def add_timing_header(request: Request, call_next):
+    t0 = time.perf_counter()
+    response = await call_next(request)
+    ms = (time.perf_counter() - t0) * 1000
+    response.headers["X-Response-Time"] = f"{ms:.1f}ms"
+    return response
 
 
 def _get_db():
@@ -145,9 +187,108 @@ def _pitcher_rows_for_window(
     )
 
 
-@app.get("/health")
+@app.get("/health", tags=["meta"])
 def health():
-    return {"status": "ok"}
+    """Fast liveness probe."""
+    return {"status": "ok", "version": app.version}
+
+
+@app.get("/health/detailed", tags=["meta"])
+def health_detailed(db: Session = Depends(_get_db)):
+    """DB record counts and data-freshness timestamps."""
+    from app.models.games import Game, PitcherGameLog, PlayerGameLog, TeamGameLog
+    from app.models.odds import OddsSnapshotRow, WeatherSnapshotRow
+
+    def _count(model):
+        return db.execute(select(func.count()).select_from(model)).scalar_one()
+
+    def _latest_date(model, col):
+        val = db.execute(select(func.max(col))).scalar_one()
+        return val.isoformat() if val else None
+
+    games_total      = _count(Game)
+    pitcher_logs     = _count(PitcherGameLog)
+    player_logs      = _count(PlayerGameLog)
+    team_logs        = _count(TeamGameLog)
+    odds_snapshots   = _count(OddsSnapshotRow)
+    weather_snapshots = _count(WeatherSnapshotRow)
+
+    latest_game      = _latest_date(Game, Game.game_date)
+    latest_pitcher   = _latest_date(PitcherGameLog, PitcherGameLog.game_date)
+    latest_odds      = db.execute(select(func.max(OddsSnapshotRow.captured_at))).scalar_one()
+
+    return {
+        "status": "ok",
+        "version": app.version,
+        "cache": {
+            "entries": len(_ANALYSIS_CACHE),
+            "ttl_seconds": _CACHE_TTL_SECONDS,
+        },
+        "records": {
+            "games": games_total,
+            "pitcher_logs": pitcher_logs,
+            "player_logs": player_logs,
+            "team_logs": team_logs,
+            "odds_snapshots": odds_snapshots,
+            "weather_snapshots": weather_snapshots,
+        },
+        "freshness": {
+            "latest_game_date": latest_game,
+            "latest_pitcher_log": latest_pitcher,
+            "latest_odds_captured_at": latest_odds.isoformat() if latest_odds else None,
+        },
+    }
+
+
+@app.post("/cache/clear", tags=["meta"])
+def clear_cache():
+    """Flush the analysis result cache (call after ingestion runs)."""
+    evicted = _cache_invalidate_all()
+    return {"evicted": evicted}
+
+
+@app.get("/model/constants", tags=["meta"])
+def model_constants():
+    """Expose all model parameters so the frontend and users can verify the math."""
+    from app.betting.game_analyzer import (
+        HOME_ADVANTAGE, FIP_SCALE, FIP_CONSTANT, BULLPEN_VULN_SCALE,
+        OFFENSE_SCALE, KELLY_FRACTION, WIND_OUT_THRESHOLD_MPH,
+        WIND_OUT_DEGREES, REST_ADJ_SHORT, REST_ADJ_LONG,
+        TREND_ADJUSTMENTS, RECOMMENDATION_TIERS, PARK_FACTORS,
+    )
+    return {
+        "version": app.version,
+        "win_probability": {
+            "home_advantage": HOME_ADVANTAGE,
+            "home_advantage_note": "2022-2024 MLB home win rate",
+            "fip_scale": FIP_SCALE,
+            "fip_scale_note": "win-prob shift per 1-run FIP advantage",
+            "fip_constant": FIP_CONSTANT,
+            "bullpen_vuln_scale": BULLPEN_VULN_SCALE,
+            "offense_scale": OFFENSE_SCALE,
+        },
+        "kelly": {
+            "fraction": KELLY_FRACTION,
+            "note": "fractional Kelly multiplier (conservative risk management)",
+        },
+        "weather": {
+            "wind_out_threshold_mph": WIND_OUT_THRESHOLD_MPH,
+            "wind_out_degrees_range": list(WIND_OUT_DEGREES),
+        },
+        "rest": {
+            "short_rest_days": "< 4",
+            "short_rest_adj": REST_ADJ_SHORT,
+            "long_rest_days": "≥ 8",
+            "long_rest_adj": REST_ADJ_LONG,
+            "normal_range": "4–6 days (no adjustment)",
+        },
+        "trend_adjustments": TREND_ADJUSTMENTS,
+        "recommendation_tiers": [
+            {"tier": t, "min_edge": me, "min_conf": mc}
+            for t, me, mc in RECOMMENDATION_TIERS
+        ],
+        "park_factors": PARK_FACTORS,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -909,25 +1050,46 @@ def _build_analysis(game_id: int, as_of: date, db: Session):
     )
 
 
-@app.get("/games/{game_id}/analyze")
+def _build_analysis_cached(game_id: int, as_of: date, db: Session) -> Optional[dict]:
+    """Cache-wrapped version of _build_analysis. Returns a dict (already serialized)."""
+    cached = _cache_get(game_id, as_of)
+    if cached is not None:
+        return cached
+    result = _build_analysis(game_id, as_of, db)
+    if result is None:
+        return None
+    serialized = _dc(result)
+    _cache_set(game_id, as_of, serialized)
+    return serialized
+
+
+@app.get("/games/{game_id}/analyze", tags=["analysis"])
 def game_analyze(
     game_id: int,
     as_of: date = Query(..., description="YYYY-MM-DD"),
     db: Session = Depends(_get_db),
 ):
-    """Run the full deterministic model for a single game."""
-    analysis = _build_analysis(game_id, as_of, db)
-    if analysis is None:
+    """Run the full deterministic model for a single game.
+
+    Results are cached for 5 minutes per (game_id, as_of) pair.
+    Call POST /cache/clear after an ingestion run to force a refresh.
+    """
+    result = _build_analysis_cached(game_id, as_of, db)
+    if result is None:
         raise HTTPException(404, f"Game {game_id} not found")
-    return _dc(analysis)
+    return result
 
 
-@app.get("/games/picks")
+@app.get("/games/picks", tags=["analysis"])
 def daily_picks(
     game_date: date = Query(..., description="YYYY-MM-DD"),
     db: Session = Depends(_get_db),
 ):
-    """Run the analyzer across all games on a date and return picks ranked by edge."""
+    """All games on a date, analyzed and ranked by model edge.
+
+    STRONG LEAN → LEAN → PASS → AVOID, then by confidence descending.
+    Analysis results are cached for 5 minutes.
+    """
     from app.models.entities import Team as TeamModel
     HomeTeam = aliased(TeamModel)
     AwayTeam = aliased(TeamModel)
@@ -941,17 +1103,69 @@ def daily_picks(
 
     results = []
     for game, _home, _away in rows:
-        analysis = _build_analysis(game.id, game_date, db)
-        if analysis is not None:
-            d = _dc(analysis)
+        d = _build_analysis_cached(game.id, game_date, db)
+        if d is not None:
+            d = dict(d)
             d["game_date"] = game.game_date.isoformat()
             d["venue"] = game.venue
             results.append(d)
 
-    # Sort: STRONG LEAN first, then LEAN, then PASS, then AVOID
     tier_order = {"STRONG LEAN": 0, "LEAN": 1, "PASS": 2, "AVOID": 3}
     results.sort(key=lambda r: (tier_order.get(r.get("ml_tier", "PASS"), 2), -r.get("ml_confidence", 0)))
     return results
+
+
+@app.get("/games/slate", tags=["analysis"])
+def slate(
+    game_date: date = Query(..., description="YYYY-MM-DD"),
+    db: Session = Depends(_get_db),
+):
+    """Single-call slate endpoint — replaces N+1 frontend pattern.
+
+    Returns every game on a date with home/away bullpen scores and model
+    analysis bundled inline. One HTTP request replaces 1 + 3N requests
+    (games list + bullpen×2 + analyze per game).
+
+    Results are cached per (game_id, date).
+    """
+    from app.models.entities import Team as TeamModel
+    HomeTeam = aliased(TeamModel)
+    AwayTeam = aliased(TeamModel)
+
+    rows = db.execute(
+        select(Game, HomeTeam, AwayTeam)
+        .join(HomeTeam, Game.home_team_id == HomeTeam.id)
+        .join(AwayTeam, Game.away_team_id == AwayTeam.id)
+        .where(Game.game_date == game_date)
+        .order_by(Game.id)
+    ).all()
+
+    def _bullpen_dict(team_id: int):
+        state = build_bullpen_state(db, team_id=team_id, as_of_date=game_date)
+        if state is None:
+            return None
+        return _dc(score_bullpen(state))
+
+    output = []
+    for game, home_t, away_t in rows:
+        analysis = _build_analysis_cached(game.id, game_date, db)
+        output.append({
+            "game_id": game.id,
+            "game_date": game.game_date.isoformat(),
+            "status": game.status,
+            "venue": game.venue,
+            "home_team_id": game.home_team_id,
+            "home_team_abbr": home_t.abbr,
+            "away_team_id": game.away_team_id,
+            "away_team_abbr": away_t.abbr,
+            "home_probable_starter_id": game.home_probable_starter_id,
+            "away_probable_starter_id": game.away_probable_starter_id,
+            "home_bullpen": _bullpen_dict(game.home_team_id),
+            "away_bullpen": _bullpen_dict(game.away_team_id),
+            "analysis": analysis,
+        })
+
+    return output
 
 
 # ---------------------------------------------------------------------------

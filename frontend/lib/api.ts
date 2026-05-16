@@ -135,8 +135,26 @@ export type WeatherData = {
   is_dome: boolean;
 };
 
+/** Returned by /games/slate — one entry per game, everything bundled. */
+export type SlateGame = {
+  game_id: number;
+  game_date: string;
+  status: string;
+  venue: string;
+  home_team_id: number;
+  home_team_abbr: string;
+  away_team_id: number;
+  away_team_abbr: string;
+  home_probable_starter_id: number | null;
+  away_probable_starter_id: number | null;
+  home_bullpen: BullpenData | null;
+  away_bullpen: BullpenData | null;
+  analysis: GameAnalysis | null;
+};
+
 export const api = {
   games: (date: string) => get<Game[]>(`/games?game_date=${date}`),
+  slate: (date: string) => get<SlateGame[]>(`/games/slate?game_date=${date}`),
   bundle: (gameId: number, asOf: string) => get<GameBundle>(`/games/${gameId}/bundle?as_of=${asOf}`),
   weather: (gameId: number) => get<WeatherData>(`/games/${gameId}/weather`),
   odds: (gameId: number) => get<unknown[]>(`/games/${gameId}/odds`),

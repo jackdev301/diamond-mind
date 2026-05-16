@@ -17,6 +17,7 @@ from datetime import date, timedelta
 from typing import Dict, List, Literal
 
 from app.contracts import BullpenState, RelieverFormWindow, RelieverUsage, WindowKey
+from app.features.bullpen_roles import effective_roles
 
 AvailabilityLabel = Literal["available", "limited", "unavailable"]
 
@@ -102,10 +103,11 @@ def calculate_overall_quality(state: BullpenState) -> float:
     if not by_pitcher:
         return 50.0
 
+    roles = effective_roles(state)
     total_weight = 0.0
     weighted_sum = 0.0
-    for windows in by_pitcher.values():
-        role_weight = _ROLE_WEIGHTS.get(windows[0].role, 1.0)
+    for pid, windows in by_pitcher.items():
+        role_weight = _ROLE_WEIGHTS.get(roles.get(pid, windows[0].role), 1.0)
         quality = _era_to_quality(_weighted_era(windows))
         weighted_sum += quality * role_weight
         total_weight += role_weight
@@ -122,13 +124,14 @@ def calculate_available_quality(
     if not by_pitcher:
         return 50.0
 
+    roles = effective_roles(state)
     total_weight = 0.0
     weighted_sum = 0.0
     for pid, windows in by_pitcher.items():
         label = availability.get(pid, "available")
         if label == "unavailable":
             continue
-        role_weight = _ROLE_WEIGHTS.get(windows[0].role, 1.0)
+        role_weight = _ROLE_WEIGHTS.get(roles.get(pid, windows[0].role), 1.0)
         if label == "limited":
             role_weight *= 0.5
         quality = _era_to_quality(_weighted_era(windows))

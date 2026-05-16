@@ -82,6 +82,7 @@ def client():
                 hit_by_pitch=0,
                 sac_flies=0,
                 stolen_bases=1,
+                caught_stealing=1,
             )
         )
         session.add(
@@ -123,6 +124,9 @@ def test_team_batting_endpoint(client):
     assert data["plate_appearances"] == 5
     assert data["home_runs"] == 1
     assert data["stolen_bases"] == 1
+    assert data["caught_stealing"] == 1
+    assert data["stolen_base_attempts"] == 2
+    assert data["stolen_base_success_rate"] == pytest.approx(0.5)
     assert data["ops"] == pytest.approx(2.1)
     assert data["iso"] == pytest.approx(1.0)
     assert data["unsupported"]["handedness_splits"]

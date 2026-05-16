@@ -168,6 +168,7 @@ def aggregate_hitter(
 def aggregate_pitcher(
     *,
     innings_pitched: float,
+    batters_faced: int,
     hits_allowed: int,
     earned_runs: int,
     walks: int,
@@ -188,10 +189,13 @@ def aggregate_pitcher(
         if innings_pitched
         else 0.0
     )
+    balls_in_play = batters_faced - strikeouts - walks - home_runs_allowed
+    babip = _safe_div(hits_allowed - home_runs_allowed, balls_in_play)
     return {
         "innings_pitched": round(innings_pitched, 1),
         "era": round(era, 2),
         "fip": round(fip, 2),
+        "babip": round(babip, 3) if balls_in_play > 0 else None,
         "whip": round(whip, 2),
         "k_per_9": round(k9, 1),
         "bb_per_9": round(bb9, 1),
@@ -218,6 +222,31 @@ def aggregate_team(
         "record_wins": wins,
         "record_losses": losses,
     }
+
+
+def _estimated_woba_from_counts(
+    *,
+    at_bats: int,
+    hits: int,
+    doubles: int,
+    triples: int,
+    home_runs: int,
+    walks: int,
+    hit_by_pitch: int,
+    sac_flies: int,
+) -> Optional[float]:
+    singles = max(hits - doubles - triples - home_runs, 0)
+    denom = at_bats + walks + hit_by_pitch + sac_flies
+    if denom == 0:
+        return None
+    return (
+        0.69 * walks
+        + 0.72 * hit_by_pitch
+        + 0.89 * singles
+        + 1.27 * doubles
+        + 1.62 * triples
+        + 2.10 * home_runs
+    ) / denom
 
 
 # --- Pure: weighted form metric --------------------------------------------
@@ -324,6 +353,60 @@ def build_team_form_window(
     agg = aggregate_team(
         games=games, runs=runs, runs_allowed=runs_allowed, wins=wins, losses=losses
     )
+    batting_rows = session.execute(
+        select(PlayerGameLog).where(
+            PlayerGameLog.team_id == team_id,
+            PlayerGameLog.game_date >= start,
+            PlayerGameLog.game_date <= end,
+        )
+    ).scalars().all()
+    stolen_bases = sum(r.stolen_bases for r in batting_rows)
+    caught_stealing = sum(r.caught_stealing for r in batting_rows)
+    stolen_base_attempts = stolen_bases + caught_stealing
+    stolen_base_success_rate = (
+        round(_safe_div(stolen_bases, stolen_base_attempts), 3)
+        if stolen_base_attempts
+        else None
+    )
+
+    player_counts: dict[int, dict[str, int]] = {}
+    for row in batting_rows:
+        counts = player_counts.setdefault(
+            row.player_id,
+            dict(
+                pa=0, ab=0, h=0, doubles=0, triples=0, hr=0,
+                walks=0, hbp=0, sf=0,
+            ),
+        )
+        counts["pa"] += row.plate_appearances
+        counts["ab"] += row.at_bats
+        counts["h"] += row.hits
+        counts["doubles"] += row.doubles
+        counts["triples"] += row.triples
+        counts["hr"] += row.home_runs
+        counts["walks"] += row.walks
+        counts["hbp"] += row.hit_by_pitch
+        counts["sf"] += row.sac_flies
+    top_six = sorted(player_counts.values(), key=lambda c: c["pa"], reverse=True)[:6]
+    top_wobas = [
+        w
+        for c in top_six
+        if (w := _estimated_woba_from_counts(
+            at_bats=c["ab"],
+            hits=c["h"],
+            doubles=c["doubles"],
+            triples=c["triples"],
+            home_runs=c["hr"],
+            walks=c["walks"],
+            hit_by_pitch=c["hbp"],
+            sac_flies=c["sf"],
+        )) is not None
+    ]
+    lineup_quality_score = (
+        round(sum(top_wobas) / len(top_wobas), 3)
+        if top_wobas
+        else None
+    )
 
     # Season baseline for trend comparison
     season_metric = agg["runs_per_game"]
@@ -355,6 +438,11 @@ def build_team_form_window(
         trend_label=trend,
         as_of_date=as_of_date,
         team_woba=None,
+        stolen_bases=stolen_bases,
+        caught_stealing=caught_stealing,
+        stolen_base_attempts=stolen_base_attempts,
+        stolen_base_success_rate=stolen_base_success_rate,
+        lineup_quality_score=lineup_quality_score,
         insufficient_sample=games < MIN_SAMPLE[window],
     )
 
@@ -502,6 +590,7 @@ def build_starter_form_window(
         func.coalesce(func.sum(PitcherGameLog.strikeouts), 0),
         func.coalesce(func.sum(PitcherGameLog.home_runs_allowed), 0),
         func.coalesce(func.sum(PitcherGameLog.pitches), 0),
+        func.coalesce(func.sum(PitcherGameLog.batters_faced), 0),
     ).where(
         and_(
             PitcherGameLog.pitcher_id == pitcher_id,
@@ -510,10 +599,10 @@ def build_starter_form_window(
             PitcherGameLog.game_date <= end,
         )
     )
-    starts, ip, h, er, bb, k, hr, pitches = session.execute(stmt).one()
+    starts, ip, h, er, bb, k, hr, pitches, bf = session.execute(stmt).one()
 
     agg = aggregate_pitcher(
-        innings_pitched=float(ip), hits_allowed=h, earned_runs=er,
+        innings_pitched=float(ip), batters_faced=bf, hits_allowed=h, earned_runs=er,
         walks=bb, strikeouts=k, home_runs_allowed=hr,
         pitches=pitches, outings=starts,
     )
@@ -553,6 +642,7 @@ def build_starter_form_window(
         innings_pitched=agg["innings_pitched"],
         era=agg["era"],
         fip=agg["fip"],
+        babip=agg["babip"],
         whip=agg["whip"],
         k_per_9=agg["k_per_9"],
         bb_per_9=agg["bb_per_9"],
@@ -609,7 +699,7 @@ def build_reliever_form_window(
     apps, ip, h, er, bb, k, hr = session.execute(stmt).one()
 
     agg = aggregate_pitcher(
-        innings_pitched=float(ip), hits_allowed=h, earned_runs=er,
+        innings_pitched=float(ip), batters_faced=0, hits_allowed=h, earned_runs=er,
         walks=bb, strikeouts=k, home_runs_allowed=hr,
         pitches=0, outings=apps,
     )
@@ -802,6 +892,11 @@ def upsert_team_form_window(session: Session, w: TeamFormWindow) -> None:
         runs_allowed_per_game=w.runs_allowed_per_game,
         team_ops=w.team_ops,
         team_woba=w.team_woba,
+        stolen_bases=w.stolen_bases,
+        caught_stealing=w.caught_stealing,
+        stolen_base_attempts=w.stolen_base_attempts,
+        stolen_base_success_rate=w.stolen_base_success_rate,
+        lineup_quality_score=w.lineup_quality_score,
         record_wins=w.record_wins,
         record_losses=w.record_losses,
         trend_label=w.trend_label.value,
@@ -868,6 +963,11 @@ def load_team_form_window(
         trend_label=TrendLabel(row.trend_label),
         as_of_date=row.as_of_date,
         team_woba=row.team_woba,
+        stolen_bases=row.stolen_bases,
+        caught_stealing=row.caught_stealing,
+        stolen_base_attempts=row.stolen_base_attempts,
+        stolen_base_success_rate=row.stolen_base_success_rate,
+        lineup_quality_score=row.lineup_quality_score,
         insufficient_sample=row.insufficient_sample,
     )
 

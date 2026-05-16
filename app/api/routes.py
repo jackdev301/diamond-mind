@@ -279,6 +279,8 @@ def team_batting(
     hbp = sum(r.hit_by_pitch for r in rows)
     sac_flies = sum(r.sac_flies for r in rows)
     stolen_bases = sum(r.stolen_bases for r in rows)
+    caught_stealing = sum(r.caught_stealing for r in rows)
+    stolen_base_attempts = stolen_bases + caught_stealing
     singles = hits - doubles - triples - home_runs
     total_bases = singles + 2 * doubles + 3 * triples + 4 * home_runs
     avg = _safe_rate(hits, ab)
@@ -317,6 +319,9 @@ def team_batting(
         "hit_by_pitch": hbp,
         "sac_flies": sac_flies,
         "stolen_bases": stolen_bases,
+        "caught_stealing": caught_stealing,
+        "stolen_base_attempts": stolen_base_attempts,
+        "stolen_base_success_rate": _safe_rate(stolen_bases, stolen_base_attempts),
         "batting_avg": avg,
         "on_base_pct": obp,
         "slugging_pct": slg,

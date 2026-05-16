@@ -198,6 +198,8 @@ class _BatterLine:
     hit_by_pitch: int
     sac_flies: int
     strikeouts: int
+    stolen_bases: int
+    caught_stealing: int
 
 
 @dataclass
@@ -305,6 +307,8 @@ def parse_boxscore(
                         hit_by_pitch=bat.get("hitByPitch", 0),
                         sac_flies=bat.get("sacFlies", 0),
                         strikeouts=bat.get("strikeOuts", 0),
+                        stolen_bases=bat.get("stolenBases", 0),
+                        caught_stealing=bat.get("caughtStealing", 0),
                     ))
 
     return batters, pitchers, home_stats, away_stats
@@ -423,6 +427,8 @@ def upsert_player_game_log(
         hit_by_pitch=b.hit_by_pitch,
         sac_flies=b.sac_flies,
         strikeouts=b.strikeouts,
+        stolen_bases=b.stolen_bases,
+        caught_stealing=b.caught_stealing,
     ))
 
 

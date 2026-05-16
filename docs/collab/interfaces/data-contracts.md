@@ -55,6 +55,11 @@ class TeamFormWindow:
     runs_allowed_per_game: float
     team_ops: float          # decimal, e.g. .742
     team_woba: Optional[float]
+    stolen_bases: int
+    caught_stealing: int
+    stolen_base_attempts: int
+    stolen_base_success_rate: Optional[float]
+    lineup_quality_score: Optional[float]  # avg estimated wOBA of top 6 PA leaders
     record_wins: int
     record_losses: int
     trend_label: TrendLabel
@@ -106,6 +111,7 @@ class PitcherFormWindow:
     era: float
     fip: Optional[float]
     xfip: Optional[float]
+    babip: Optional[float]
     whip: float
     k_per_9: float
     bb_per_9: float

@@ -156,6 +156,8 @@ BOXSCORE_PAYLOAD = {
                             "hitByPitch": 0,
                             "sacFlies": 0,
                             "strikeOuts": 1,
+                            "stolenBases": 1,
+                            "caughtStealing": 1,
                         },
                     },
                 },
@@ -269,6 +271,8 @@ def test_parse_boxscore_batter_lines():
     harper = next(b for b in batters if b.player_id == 547180)
     assert harper.hits == 2
     assert harper.home_runs == 1
+    assert harper.stolen_bases == 1
+    assert harper.caught_stealing == 1
 
 
 # ---------------------------------------------------------------------------

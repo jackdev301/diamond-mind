@@ -74,13 +74,14 @@ def test_aggregate_hitter_empty_window_does_not_divide_by_zero():
 
 def test_aggregate_pitcher_basic():
     out = aggregate_pitcher(
-        innings_pitched=63.0, hits_allowed=52, earned_runs=18,
+        innings_pitched=63.0, batters_faced=250, hits_allowed=52, earned_runs=18,
         walks=14, strikeouts=72, home_runs_allowed=6,
         pitches=985, outings=10,
     )
     # ERA = 9 * 18 / 63 = 2.57
     assert out["era"] == round(9 * 18 / 63, 2)
     assert out["fip"] == round(((13 * 6 + 3 * 14 - 2 * 72) / 63) + 3.10, 2)
+    assert out["babip"] == round((52 - 6) / (250 - 72 - 14 - 6), 3)
     assert out["whip"] == round((14 + 52) / 63, 2)
     assert out["k_per_9"] == round(9 * 72 / 63, 1)
     assert out["avg_innings_per_start"] == round(63 / 10, 2)
@@ -236,6 +237,23 @@ def _seed_team_with_games(session: Session, *, team_id=143, abbr="PHI"):
             runs=5, runs_allowed=3 + (1 if not won else 0),
             won=won, is_home=(i % 2 == 0),
         ))
+        for j in range(6):
+            session.add(PlayerGameLog(
+                game_id=10000 + i,
+                player_id=20000 + j,
+                team_id=team_id,
+                game_date=d,
+                plate_appearances=4 + (1 if j < 2 else 0),
+                at_bats=4,
+                hits=2 if j < 3 else 1,
+                doubles=1 if j == 0 else 0,
+                triples=0,
+                home_runs=1 if j == 1 else 0,
+                walks=1 if j < 2 else 0,
+                strikeouts=1,
+                stolen_bases=1 if j == 0 else 0,
+                caught_stealing=1 if j == 1 else 0,
+            ))
     # Earlier block: 4 wins, 4 runs/g, 4.5 allowed/g
     for i in range(10):
         d = date(2026, 4, 5 + i)
@@ -265,6 +283,11 @@ def test_build_team_form_window_l10_vs_season(db_session):
     assert l10 is not None
     assert l10.games == 10
     assert l10.record_wins == 7
+    assert l10.stolen_bases == 10
+    assert l10.caught_stealing == 10
+    assert l10.stolen_base_attempts == 20
+    assert l10.stolen_base_success_rate == 0.5
+    assert l10.lineup_quality_score is not None
     # L10 runs/g (5.0) is > 10% above season baseline → HEATING_UP.
     assert l10.trend_label in {TrendLabel.HEATING_UP, TrendLabel.REGRESSION_RISK}
 
@@ -371,4 +394,5 @@ def test_build_starter_form_window(db_session):
     assert w.innings_pitched == 30.0
     assert w.era == round(9 * (2 * 5) / 30.0, 2)
     assert w.fip == round(((13 * 5 + 3 * 5 - 2 * 40) / 30.0) + 3.10, 2)
+    assert w.babip == round((20 - 5) / (120 - 40 - 5 - 5), 3)
     assert w.avg_pitches_per_start == 95.0

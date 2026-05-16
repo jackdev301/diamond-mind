@@ -62,6 +62,11 @@ class TeamFormWindow:
     trend_label: TrendLabel
     as_of_date: date
     team_woba: Optional[float] = None
+    stolen_bases: int = 0
+    caught_stealing: int = 0
+    stolen_base_attempts: int = 0
+    stolen_base_success_rate: Optional[float] = None
+    lineup_quality_score: Optional[float] = None
     insufficient_sample: bool = False
 
 
@@ -104,6 +109,7 @@ class PitcherFormWindow:
     as_of_date: date
     fip: Optional[float] = None
     xfip: Optional[float] = None
+    babip: Optional[float] = None
     avg_pitches_per_start: Optional[float] = None
     insufficient_sample: bool = False
 

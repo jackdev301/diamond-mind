@@ -21,10 +21,10 @@
 
 ## Status
 
-- [ ] Phase 2 — skeleton
-- [ ] Data contracts drafted in `interfaces/data-contracts.md` (joint, do this first)
-- [ ] Phase 3 — DB models
-- [ ] Phase 7 — MLB Stats API ingestion
+- [x] Phase 2 — skeleton
+- [x] Data contracts drafted in `interfaces/data-contracts.md` (strawman; Jack to review)
+- [x] Phase 3 — DB models (`app/models/*`, `scripts/init_db.py`, 17 tables, tests green)
+- [ ] Phase 7 — MLB Stats API ingestion ← next
 - [ ] Phase 5 — recent form engine
 - [ ] Phase 11 — CLI scripts (data side)
 

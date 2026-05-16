@@ -13,8 +13,8 @@ The canonical project vision lives in [`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRI
 | Phase | Scope | Status |
 |------:|-------|--------|
 | 1 | Inspect repo + plan | done |
-| 2 | Skeleton, config, contracts, smoke tests | **in progress** |
-| 3 | Database models | next (Track A) |
+| 2 | Skeleton, config, contracts, smoke tests | done |
+| 3 | Database models | done |
 | 4 | Betting utilities | next (Track B) |
 | 5 | Recent form engine | Track A |
 | 6 | Bullpen intelligence | Track B |
@@ -55,11 +55,12 @@ See [`docs/collab/decisions/`](docs/collab/decisions/). Currently: `pip` + `pypr
 
 ## Initializing the database
 
-*Not yet implemented — lands in Phase 3.* Will be:
-
 ```bash
-python scripts/init_db.py
+python scripts/init_db.py            # idempotent; creates missing tables
+python scripts/init_db.py --drop     # destructive: drops everything first
 ```
+
+17 tables are created — see `app/models/__init__.py` for the full list. The DB path comes from `DATABASE_URL` in `.env` (defaults to `sqlite:///./diamond_mind.db`).
 
 ## Running the daily report
 

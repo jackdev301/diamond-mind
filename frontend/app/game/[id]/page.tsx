@@ -23,13 +23,13 @@ function BullpenCard({ abbr, bp }: { abbr: string; bp: NonNullable<GameBundle["h
       <StatRow label="Fatigue" value={`${bp.fatigue_score}/100`} />
       <StatRow label="Overall Quality" value={`${bp.overall_quality}/100`} />
       <StatRow label="Available Quality" value={`${bp.available_quality}/100`} />
-      {bp.unavailable_relievers.length > 0 && (
+      {(bp.unavailable_relievers?.length ?? 0) > 0 && (
         <p className="text-red-400 text-xs mt-2">Unavailable: {bp.unavailable_relievers.join(", ")}</p>
       )}
-      {bp.limited_relievers.length > 0 && (
+      {(bp.limited_relievers?.length ?? 0) > 0 && (
         <p className="text-orange-400 text-xs mt-1">Limited: {bp.limited_relievers.join(", ")}</p>
       )}
-      {bp.best_available.length > 0 && (
+      {(bp.best_available?.length ?? 0) > 0 && (
         <p className="text-green-400 text-xs mt-1">Best available: {bp.best_available.join(", ")}</p>
       )}
       <p className="text-gray-500 text-xs mt-3 italic">{bp.betting_implication}</p>

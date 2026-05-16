@@ -3,6 +3,20 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, type GameAnalysis } from "@/lib/api";
+import { teamLogoUrl } from "@/lib/team-logos";
+
+function TeamLogo({ abbr, size = 28 }: { abbr: string; size?: number }) {
+  return (
+    <img
+      src={teamLogoUrl(abbr)}
+      alt={abbr}
+      width={size}
+      height={size}
+      style={{ objectFit: "contain", flexShrink: 0 }}
+      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+    />
+  );
+}
 
 function tierColor(tier: string): string {
   if (tier === "STRONG LEAN") return "var(--green)";
@@ -49,9 +63,15 @@ function PickCard({ pick, index }: { pick: GameAnalysis; index: number }) {
       >
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: "10px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <TeamLogo abbr={pick.away_team_abbr} size={22} />
             <span style={{ fontWeight: 600, fontSize: "16px", color: "var(--text)", letterSpacing: "-0.02em" }}>
-              {pick.away_team_abbr} <span style={{ color: "var(--text-3)", fontWeight: 400 }}>@</span> {pick.home_team_abbr}
+              {pick.away_team_abbr}
+            </span>
+            <span style={{ color: "var(--text-3)", fontSize: "13px" }}>@</span>
+            <TeamLogo abbr={pick.home_team_abbr} size={22} />
+            <span style={{ fontWeight: 600, fontSize: "16px", color: "var(--text)", letterSpacing: "-0.02em" }}>
+              {pick.home_team_abbr}
             </span>
             {pick.venue && (
               <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-3)" }}>{pick.venue}</span>

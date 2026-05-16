@@ -3,6 +3,20 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, type Game, type BullpenData, type GameAnalysis } from "@/lib/api";
+import { teamLogoUrl } from "@/lib/team-logos";
+
+function TeamLogo({ abbr, size = 28 }: { abbr: string; size?: number }) {
+  return (
+    <img
+      src={teamLogoUrl(abbr)}
+      alt={abbr}
+      width={size}
+      height={size}
+      style={{ objectFit: "contain", flexShrink: 0 }}
+      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+    />
+  );
+}
 
 function vulnColor(score: number): string {
   if (score >= 70) return "var(--red)";
@@ -68,8 +82,16 @@ function GameCard({ game, date, index }: { game: Game; date: string; index: numb
       >
         {/* Matchup */}
         <div>
-          <div style={{ fontWeight: 600, fontSize: "15px", color: "var(--text)", letterSpacing: "-0.02em" }}>
-            {game.away_team_abbr} <span style={{ color: "var(--text-3)", fontWeight: 400 }}>@</span> {game.home_team_abbr}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <TeamLogo abbr={game.away_team_abbr} size={24} />
+            <span style={{ fontWeight: 600, fontSize: "15px", color: "var(--text)", letterSpacing: "-0.02em" }}>
+              {game.away_team_abbr}
+            </span>
+            <span style={{ color: "var(--text-3)", fontSize: "13px" }}>@</span>
+            <TeamLogo abbr={game.home_team_abbr} size={24} />
+            <span style={{ fontWeight: 600, fontSize: "15px", color: "var(--text)", letterSpacing: "-0.02em" }}>
+              {game.home_team_abbr}
+            </span>
           </div>
           {game.venue && (
             <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-3)", marginTop: "3px" }}>{game.venue}</div>

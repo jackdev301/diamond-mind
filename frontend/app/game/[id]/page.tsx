@@ -4,6 +4,20 @@ import React, { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { api, type GameBundle, type WeatherData, type GameAnalysis, type TeamBatting } from "@/lib/api";
+import { teamLogoUrl } from "@/lib/team-logos";
+
+function TeamLogo({ abbr, size = 40 }: { abbr: string; size?: number }) {
+  return (
+    <img
+      src={teamLogoUrl(abbr)}
+      alt={abbr}
+      width={size}
+      height={size}
+      style={{ objectFit: "contain", flexShrink: 0 }}
+      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+    />
+  );
+}
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
@@ -593,11 +607,17 @@ export default function GameDetailPage() {
       </Link>
 
       <div style={{ marginTop: "16px", marginBottom: "28px", borderBottom: "1px solid var(--border)", paddingBottom: "16px" }}>
-        <h1 style={{ fontWeight: 700, fontSize: "28px", letterSpacing: "-0.03em", margin: 0, lineHeight: 1.1 }}>
-          {bundle.away_team_abbr} <span style={{ color: "var(--text-3)", fontWeight: 400 }}>@</span> {bundle.home_team_abbr}
-        </h1>
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-2)", marginTop: "6px" }}>
-          {bundle.venue} · {bundle.game_date}
+        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+          <TeamLogo abbr={bundle.away_team_abbr} size={48} />
+          <div>
+            <h1 style={{ fontWeight: 700, fontSize: "28px", letterSpacing: "-0.03em", margin: 0, lineHeight: 1.1 }}>
+              {bundle.away_team_abbr} <span style={{ color: "var(--text-3)", fontWeight: 400 }}>@</span> {bundle.home_team_abbr}
+            </h1>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-2)", marginTop: "6px" }}>
+              {bundle.venue} · {bundle.game_date}
+            </div>
+          </div>
+          <TeamLogo abbr={bundle.home_team_abbr} size={48} />
         </div>
       </div>
 

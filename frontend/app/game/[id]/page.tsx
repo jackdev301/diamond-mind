@@ -63,7 +63,8 @@ export default function GameDetailPage() {
 
   useEffect(() => {
     const gameId = Number(id);
-    api.bundle(gameId).then((b) => { setBundle(b); setLoading(false); });
+    const today = new Date().toISOString().split("T")[0];
+    api.bundle(gameId, today).then((b) => { setBundle(b); setLoading(false); });
     api.weather(gameId).then((w) => setWeather(w));
   }, [id]);
 

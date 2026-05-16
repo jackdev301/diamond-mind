@@ -82,13 +82,13 @@ export type WeatherData = {
 };
 
 export const api = {
-  games: (date: string) => get<Game[]>(`/games?date=${date}`),
-  bundle: (gameId: number) => get<GameBundle>(`/games/${gameId}/bundle`),
+  games: (date: string) => get<Game[]>(`/games?game_date=${date}`),
+  bundle: (gameId: number, asOf: string) => get<GameBundle>(`/games/${gameId}/bundle?as_of=${asOf}`),
   weather: (gameId: number) => get<WeatherData>(`/games/${gameId}/weather`),
   odds: (gameId: number) => get<unknown[]>(`/games/${gameId}/odds`),
   bullpen: (teamId: number, date: string) =>
-    get<BullpenData>(`/teams/${teamId}/bullpen?date=${date}`),
-  pitcher: (id: number) => get<PitcherForm>(`/pitchers/${id}/form`),
+    get<BullpenData>(`/teams/${teamId}/bullpen?as_of=${date}`),
+  pitcher: (id: number, asOf: string) => get<PitcherForm>(`/pitchers/${id}/form?as_of=${asOf}`),
   polishReport: (markdown: string) =>
     post<{ markdown: string; polished: boolean; method: "sdk" | "cli" | "none" }>("/report/polish", { markdown }),
 };

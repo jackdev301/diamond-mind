@@ -51,22 +51,25 @@ function BullpenCard({ abbr, bp }: { abbr: string; bp: NonNullable<GameBundle["h
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderTop: `2px solid ${vc}`, borderRadius: "6px", padding: "16px" }}>
       <Label>{abbr} Bullpen</Label>
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "14px" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "14px" }}>
         <div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-            <span style={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--text-2)" }}>Vulnerability</span>
+          <div style={{ marginBottom: "4px" }}>
+            <span style={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--text-2)", fontWeight: 500 }}>Vulnerability</span>
+            <span style={{ fontFamily: "var(--font-body)", fontSize: "11px", color: "var(--text-3)", marginLeft: "6px" }}>— how exposed the pen is tonight (0 = fresh, 100 = gassed)</span>
           </div>
           <ScoreBar value={bp.vulnerability_score} color={vc} delay={0} />
         </div>
         <div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-            <span style={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--text-2)" }}>Fatigue</span>
+          <div style={{ marginBottom: "4px" }}>
+            <span style={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--text-2)", fontWeight: 500 }}>Fatigue</span>
+            <span style={{ fontFamily: "var(--font-body)", fontSize: "11px", color: "var(--text-3)", marginLeft: "6px" }}>— pitcher workload over last 3 days (0 = rested, 100 = maxed out)</span>
           </div>
           <ScoreBar value={bp.fatigue_score} color="var(--text-2)" delay={80} />
         </div>
         <div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-            <span style={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--text-2)" }}>Available Quality</span>
+          <div style={{ marginBottom: "4px" }}>
+            <span style={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--text-2)", fontWeight: 500 }}>Available Quality</span>
+            <span style={{ fontFamily: "var(--font-body)", fontSize: "11px", color: "var(--text-3)", marginLeft: "6px" }}>— quality of relievers who can actually pitch tonight (0–100)</span>
           </div>
           <ScoreBar value={bp.available_quality} color="var(--amber)" delay={160} />
         </div>
@@ -74,17 +77,17 @@ function BullpenCard({ abbr, bp }: { abbr: string; bp: NonNullable<GameBundle["h
 
       {(bp.unavailable_relievers?.length ?? 0) > 0 && (
         <div style={{ marginTop: "8px", fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--red)" }}>
-          OUT: {bp.unavailable_relievers.join(", ")}
+          Can&apos;t pitch tonight: {bp.unavailable_relievers.join(", ")}
         </div>
       )}
       {(bp.limited_relievers?.length ?? 0) > 0 && (
         <div style={{ marginTop: "4px", fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--orange)" }}>
-          LTD: {bp.limited_relievers.join(", ")}
+          Limited (high usage): {bp.limited_relievers.join(", ")}
         </div>
       )}
       {(bp.best_available?.length ?? 0) > 0 && (
         <div style={{ marginTop: "4px", fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--green)" }}>
-          BEST: {bp.best_available.join(", ")}
+          Best available: {bp.best_available.join(", ")}
         </div>
       )}
       <div style={{ marginTop: "12px", fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--text-2)", fontStyle: "italic", lineHeight: 1.4 }}>
@@ -97,24 +100,24 @@ function BullpenCard({ abbr, bp }: { abbr: string; bp: NonNullable<GameBundle["h
 function StarterCard({ abbr, starter }: { abbr: string; starter: NonNullable<GameBundle["home_starter"]> | null }) {
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "6px", padding: "16px" }}>
-      <Label>{abbr} Starter</Label>
+      <Label>{abbr} Starting Pitcher</Label>
       {starter ? (
         <>
           <div style={{ fontWeight: 600, fontSize: "15px", marginBottom: "12px", color: "var(--text)", letterSpacing: "-0.01em" }}>
             {starter.pitcher_name}
           </div>
-          <StatRow label="ERA" value={starter.era?.toFixed(2)} />
-          <StatRow label="WHIP" value={starter.whip?.toFixed(2)} />
-          <StatRow label="K/9" value={starter.k_per_9?.toFixed(1)} />
-          <StatRow label="Trend" value={starter.trend_label?.replace(/_/g, " ")} mono={false} />
+          <StatRow label="ERA — Earned Run Average (runs allowed per 9 innings; lower = better)" value={starter.era?.toFixed(2)} />
+          <StatRow label="WHIP — Walks + Hits per Inning Pitched (baserunners allowed; lower = better)" value={starter.whip?.toFixed(2)} />
+          <StatRow label="K/9 — Strikeouts per 9 innings (swing-and-miss ability; higher = better)" value={starter.k_per_9?.toFixed(1)} />
+          <StatRow label="Recent trend" value={starter.trend_label?.replace(/_/g, " ")} mono={false} />
           {starter.insufficient_sample && (
-            <div style={{ marginTop: "8px", fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--amber)" }}>
-              ⚠ Small sample
+            <div style={{ marginTop: "8px", fontSize: "11px", color: "var(--amber)" }}>
+              ⚠ Small sample — fewer than 5 starts, use caution
             </div>
           )}
         </>
       ) : (
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-3)" }}>TBD</div>
+        <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-3)" }}>Starter not yet announced</div>
       )}
     </div>
   );
@@ -190,12 +193,12 @@ function TeamStatsCard({ homeAbbr, awayAbbr, homeForm, awayForm }: {
         <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase", textAlign: "center", paddingTop: "3px" }}>L10</div>
         <div style={{ fontWeight: 600, fontSize: "14px", color: "var(--text-2)", textAlign: "left", letterSpacing: "-0.01em" }}>{awayAbbr}</div>
       </div>
-      <CompareRow label="R/G" home={hf?.runs_per_game} away={af?.runs_per_game} fmt={v => v.toFixed(1)} />
-      <CompareRow label="RA/G" home={hf?.runs_allowed_per_game} away={af?.runs_allowed_per_game} higherBetter={false} fmt={v => v.toFixed(1)} />
-      <CompareRow label="OPS" home={hf?.team_ops} away={af?.team_ops} fmt={v => v.toFixed(3)} />
-      <CompareRow label="wOBA" home={hf?.team_woba} away={af?.team_woba} fmt={v => v.toFixed(3)} />
-      <CompareRow label="Wins" home={hf?.record_wins} away={af?.record_wins} fmt={v => String(Math.round(v))} />
-      <CompareRow label="Losses" home={hf?.record_losses} away={af?.record_losses} higherBetter={false} fmt={v => String(Math.round(v))} />
+      <CompareRow label="R/G — Runs scored per game" home={hf?.runs_per_game} away={af?.runs_per_game} fmt={v => v.toFixed(1)} />
+      <CompareRow label="RA/G — Runs allowed per game" home={hf?.runs_allowed_per_game} away={af?.runs_allowed_per_game} higherBetter={false} fmt={v => v.toFixed(1)} />
+      <CompareRow label="OPS — On-base + Slugging (overall hitting; lg avg ~.720)" home={hf?.team_ops} away={af?.team_ops} fmt={v => v.toFixed(3)} />
+      <CompareRow label="wOBA — Weighted On-Base Avg (quality of contact; lg avg ~.310)" home={hf?.team_woba} away={af?.team_woba} fmt={v => v.toFixed(3)} />
+      <CompareRow label="W — Wins (last 10 games)" home={hf?.record_wins} away={af?.record_wins} fmt={v => String(Math.round(v))} />
+      <CompareRow label="L — Losses (last 10 games)" home={hf?.record_losses} away={af?.record_losses} higherBetter={false} fmt={v => String(Math.round(v))} />
       {(hf?.trend_label || af?.trend_label) && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 1fr", padding: "5px 0", marginTop: "2px" }}>
           <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--text-2)", textAlign: "right" }}>{hf?.trend_label?.replace(/_/g, " ") ?? "—"}</span>
@@ -228,39 +231,60 @@ function AnalysisPanel({ a }: { a: GameAnalysis }) {
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `3px solid ${tc}`, borderRadius: "6px", padding: "20px" }}>
         {/* Top row */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px", marginBottom: "20px" }}>
-          {/* ML Lean */}
+          {/* Moneyline pick */}
           <div>
-            <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "6px" }}>ML Lean</div>
+            <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "6px" }}>Moneyline Pick</div>
             <div style={{ fontWeight: 700, fontSize: "18px", color: tc, letterSpacing: "-0.02em" }}>
-              {isActionable ? `${leanAbbr} ML` : a.ml_tier}
+              {isActionable ? `${leanAbbr} to win` : a.ml_tier}
             </div>
             {isActionable && (
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-2)", marginTop: "2px" }}>
-                {Math.round(a.ml_confidence * 100)}% model · {Math.round(a.implied_prob * 100)}% implied
+              <div style={{ fontSize: "11px", color: "var(--text-2)", marginTop: "4px", lineHeight: 1.5 }}>
+                <span style={{ fontFamily: "var(--font-mono)" }}>{a.ml_american_odds > 0 ? "+" : ""}{a.ml_american_odds}</span>
+                {" "}odds · book implies{" "}
+                <span style={{ fontFamily: "var(--font-mono)" }}>{Math.round(a.implied_prob * 100)}%</span>
+                {" "}win chance
               </div>
             )}
             {isActionable && (
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--green)", marginTop: "1px" }}>
-                +{((a.ml_confidence - a.implied_prob) * 100).toFixed(1)}% edge · {(a.ml_kelly_fraction * 100).toFixed(1)}% Kelly
+              <div style={{ fontSize: "11px", color: "var(--green)", marginTop: "4px", lineHeight: 1.5 }}>
+                Our model says{" "}
+                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>{Math.round(a.ml_confidence * 100)}%</span>
+                {" "}— a{" "}
+                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>+{((a.ml_confidence - a.implied_prob) * 100).toFixed(1)}%</span>
+                {" "}edge over the book
+              </div>
+            )}
+            {isActionable && (
+              <div style={{ fontSize: "11px", color: "var(--text-3)", marginTop: "4px" }}>
+                Kelly bet size: <span style={{ fontFamily: "var(--font-mono)" }}>{(a.ml_kelly_fraction * 100).toFixed(1)}%</span> of bankroll
               </div>
             )}
           </div>
 
           {/* Win Probability */}
           <div>
-            <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "6px" }}>Win Prob</div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: "13px", color: "var(--text)", marginBottom: "2px" }}>{a.home_team_abbr} {Math.round(a.model_home_win_prob * 100)}%</div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: "13px", color: "var(--text-2)" }}>{a.away_team_abbr} {Math.round(a.model_away_win_prob * 100)}%</div>
+            <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "6px" }}>Model Win Chance</div>
+            <div style={{ fontSize: "13px", color: "var(--text)", marginBottom: "4px" }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>{Math.round(a.model_home_win_prob * 100)}%</span>
+              {" "}{a.home_team_abbr} (home)
+            </div>
+            <div style={{ fontSize: "13px", color: "var(--text-2)" }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>{Math.round(a.model_away_win_prob * 100)}%</span>
+              {" "}{a.away_team_abbr} (away)
+            </div>
+            <div style={{ fontSize: "10px", color: "var(--text-3)", marginTop: "6px", lineHeight: 1.4 }}>
+              Based on starting pitching, bullpen, offense, recent form, and park
+            </div>
           </div>
 
-          {/* Total */}
+          {/* Total runs */}
           <div>
-            <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "6px" }}>Total</div>
+            <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "6px" }}>Combined Runs (O/U)</div>
             <div style={{ fontWeight: 700, fontSize: "18px", letterSpacing: "-0.02em", color: a.total_lean === "OVER" ? "var(--amber)" : a.total_lean === "UNDER" ? "var(--blue)" : "var(--text-3)" }}>
-              {a.total_lean}
+              {a.total_lean === "PASS" ? "No lean" : a.total_lean}
             </div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-2)", marginTop: "2px" }}>
-              Proj {a.projected_total.toFixed(1)} runs
+            <div style={{ fontSize: "11px", color: "var(--text-2)", marginTop: "4px" }}>
+              Model projects <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>{a.projected_total.toFixed(1)}</span> total runs
             </div>
           </div>
         </div>
@@ -275,39 +299,50 @@ function AnalysisPanel({ a }: { a: GameAnalysis }) {
 
         {/* Component breakdown */}
         {(() => {
+          const homeAbbr = a.home_team_abbr;
+          const awayAbbr = a.away_team_abbr;
           const components = [
-            { label: "SP / FIP", val: a.component_fip },
-            { label: "Bullpen", val: a.component_bullpen },
-            { label: "Offense", val: a.component_offense },
-            { label: "Trend",   val: a.component_trend },
-            { label: "K% Mtch", val: a.component_k_matchup },
-            { label: "Weather", val: a.component_weather },
-            { label: "Rest",    val: a.component_rest },
-            { label: "Park",    val: a.component_park },
+            { label: "Starting Pitcher (FIP)", tooltip: "FIP = Fielding-Independent Pitching — measures strikeouts, walks, HR allowed", val: a.component_fip },
+            { label: "Bullpen",                tooltip: "Comparative bullpen vulnerability and fatigue today", val: a.component_bullpen },
+            { label: "Offense",                tooltip: "Hitting quality via wOBA — Weighted On-Base Average (lg avg .310)", val: a.component_offense },
+            { label: "Recent Form",            tooltip: "Win/loss trend over last 10 games", val: a.component_trend },
+            { label: "Strikeout Matchup",      tooltip: "Pitcher K-rate vs opposing lineup's strikeout tendency", val: a.component_k_matchup },
+            { label: "Weather",                tooltip: "Wind and temperature effects on run scoring", val: a.component_weather },
+            { label: "Pitcher Rest",           tooltip: "<4 days = short rest penalty; 8+ days = possible rust", val: a.component_rest },
+            { label: "Park Factor",            tooltip: "How this ballpark boosts or suppresses scoring vs league avg", val: a.component_park },
           ].filter(c => Math.abs(c.val) > 0.001);
           if (components.length === 0) return null;
           const maxAbs = Math.max(...components.map(c => Math.abs(c.val)), 0.01);
           return (
             <div style={{ paddingTop: "14px", borderTop: "1px solid var(--border)", marginBottom: "14px" }}>
-              <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "10px" }}>Model Breakdown</div>
-              {components.map(({ label, val }) => {
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "10px" }}>
+                <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase" }}>Model Breakdown</div>
+                <div style={{ display: "flex", gap: "12px", fontSize: "10px", color: "var(--text-3)" }}>
+                  <span style={{ color: "var(--red)" }}>← favors {awayAbbr}</span>
+                  <span style={{ color: "var(--green)" }}>favors {homeAbbr} →</span>
+                </div>
+              </div>
+              {components.map(({ label, tooltip, val }) => {
                 const pct = (Math.abs(val) / maxAbs) * 100;
                 const color = val > 0 ? "var(--green)" : "var(--red)";
                 return (
-                  <div key={label} style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--text-3)", width: "52px", textAlign: "right" }}>{label}</span>
-                    <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "4px" }}>
-                      {val < 0 && <div style={{ flex: 1, display: "flex", justifyContent: "flex-end" }}>
-                        <div style={{ width: `${pct}%`, height: "6px", background: color, borderRadius: "2px" }} />
-                      </div>}
-                      <div style={{ width: "2px", height: "12px", background: "var(--border-2)", flexShrink: 0 }} />
-                      {val > 0 && <div style={{ flex: 1 }}>
-                        <div style={{ width: `${pct}%`, height: "6px", background: color, borderRadius: "2px" }} />
-                      </div>}
+                  <div key={label} style={{ marginBottom: "8px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
+                      <span style={{ fontFamily: "var(--font-body)", fontSize: "11px", color: "var(--text-2)" }}>{label}</span>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color, fontWeight: 600 }}>
+                        {val > 0 ? "+" : ""}{(val * 100).toFixed(1)}%
+                      </span>
                     </div>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color, width: "42px" }}>
-                      {val > 0 ? "+" : ""}{(val * 100).toFixed(1)}%
-                    </span>
+                    <div style={{ fontSize: "10px", color: "var(--text-3)", marginBottom: "3px", lineHeight: 1.3 }}>{tooltip}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                      <div style={{ flex: 1, display: "flex", justifyContent: "flex-end" }}>
+                        {val < 0 && <div style={{ width: `${pct}%`, height: "5px", background: color, borderRadius: "2px" }} />}
+                      </div>
+                      <div style={{ width: "2px", height: "10px", background: "var(--border-2)", flexShrink: 0 }} />
+                      <div style={{ flex: 1 }}>
+                        {val > 0 && <div style={{ width: `${pct}%`, height: "5px", background: color, borderRadius: "2px" }} />}
+                      </div>
+                    </div>
                   </div>
                 );
               })}

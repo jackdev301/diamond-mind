@@ -23,7 +23,7 @@ from app.contracts import PitcherFormWindow, TeamFormWindow, WeatherSnapshot
 from app.features.bullpen_vulnerability import BullpenReport
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-HOME_ADVANTAGE = 0.54          # historical MLB home win rate
+HOME_ADVANTAGE = 0.535         # 2022-2024 MLB home win rate (declining from old 54% avg)
 FIP_SCALE = 0.018              # each 1-run FIP advantage ≈ 1.8% win prob shift
 BULLPEN_VULN_SCALE = 0.0012   # each 1-pt vulnerability differential ≈ 0.12%
 OFFENSE_SCALE = 0.025          # each 0.5 run/game offense edge ≈ 2.5%
@@ -185,7 +185,7 @@ def _trend_adj(form: Optional[TeamFormWindow]) -> float:
 
 
 WOBA_SCALE = 0.15   # each 0.010 wOBA advantage ≈ 1.5% win prob shift
-WOBA_AVERAGE = 0.320
+WOBA_AVERAGE = 0.310   # 2024 MLB league wOBA (FanGraphs park-adjusted)
 
 
 def _offense_adj(home_form: Optional[TeamFormWindow], away_form: Optional[TeamFormWindow]) -> tuple[float, str]:
@@ -357,7 +357,8 @@ def analyze_game(
                     )
 
     # K% matchup edge
-    K_RATE_HIGH = 0.24
+    # 2024 MLB avg K% ≈ 22.6%; 1 SD ≈ 2.5pp → "high K%" = 25%+
+    K_RATE_HIGH = 0.25
     comp_k = 0.0
     for sp, team_k_rate, side_label, opp_label in [
         (home_sp, away_k_rate, "HOME", "AWAY"),
@@ -496,8 +497,9 @@ def analyze_game(
             comp_rest += adj
 
     # 7. Team walk rate offensive signal — high BB% offenses reach base more
-    BB_RATE_HIGH = 0.095
-    BB_RATE_LOW = 0.065
+    # 2024 MLB avg BB% ≈ 8.5%; "high patience" = 10.5%+ (2 SD above avg)
+    BB_RATE_HIGH = 0.105
+    BB_RATE_LOW = 0.065   # genuinely free-swinging (1.5 SD below avg)
     for bb_rate, side_label in [(home_bb_rate, "HOME"), (away_bb_rate, "AWAY")]:
         if bb_rate is None:
             continue
@@ -512,8 +514,11 @@ def analyze_game(
             comp_off += adj
 
     # BABIP regression signal — prefer PitcherFormWindow.babip if available, else inline
+    # Pitcher BABIP: league avg ≈ .298, SD ≈ 30pts
+    # High = .340+ (1.4 SD above avg → unlucky, expect positive regression)
+    # Low  = .265  (1.1 SD below avg → running lucky, negative regression risk)
     BABIP_HIGH = 0.340
-    BABIP_LOW  = 0.255
+    BABIP_LOW  = 0.265
     for _inline_babip, sp, side_label in [
         (home_sp_babip, home_sp, "HOME"),
         (away_sp_babip, away_sp, "AWAY"),
@@ -540,7 +545,9 @@ def analyze_game(
 
     # Speed / pressure signal — use form window SB success rate if available
     SB_RATE_HIGH = 0.025
-    SB_SUCCESS_ELITE = 0.82   # 82%+ SB success = genuine weapon
+    # Break-even SB% = CS_value / (SB_value + CS_value) = 0.467 / (0.175 + 0.467) = 72.7%
+    # 2024 MLB avg success rate ≈ 79%; "elite running game" = 80%+
+    SB_SUCCESS_ELITE = 0.80
     for sb_rate, form, side_label in [
         (home_sb_rate, home_form, "HOME"),
         (away_sb_rate, away_form, "AWAY"),
@@ -562,8 +569,8 @@ def analyze_game(
             factors.append(f"{side_label} lineup speed threat: {sb_rate:.3f} SB/PA")
 
     # Lineup quality signal from TeamFormWindow.lineup_quality_score
-    LQ_SCALE = 0.08   # each 0.010 above/below 0.320 average wOBA → 0.8% shift
-    LQ_AVERAGE = 0.320
+    LQ_SCALE = 0.08   # each 0.010 above/below average wOBA → 0.8% shift
+    LQ_AVERAGE = 0.310   # match 2024 MLB wOBA average
     for form, side_label in [(home_form, "HOME"), (away_form, "AWAY")]:
         lq = getattr(form, "lineup_quality_score", None) if form else None
         if lq is None:
@@ -648,7 +655,7 @@ def analyze_game(
     projected_total = round(proj_home_runs + proj_away_runs, 1)
 
     # ISO power adjustment — high ISO lineups score more extra-base hits
-    ISO_AVERAGE = 0.160
+    ISO_AVERAGE = 0.162   # 2024 MLB avg ISO (SLG − AVG) ≈ .162
     for iso_val, label in [(home_iso, "HOME"), (away_iso, "AWAY")]:
         if iso_val is not None:
             iso_adj = (iso_val - ISO_AVERAGE) * 2.0   # each 0.050 ISO above avg adds ~0.1 runs

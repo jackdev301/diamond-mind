@@ -75,6 +75,7 @@ class PlayerGameLog(Base):
     sac_flies: Mapped[int] = mapped_column(default=0)
     stolen_bases: Mapped[int] = mapped_column(default=0)
     caught_stealing: Mapped[int] = mapped_column(default=0)
+    opponent_pitcher_hand: Mapped[Optional[str]] = mapped_column(String(1))  # L / R of opposing SP
 
     __table_args__ = (Index("ix_player_game_logs_player_date", "player_id", "game_date"),)
 

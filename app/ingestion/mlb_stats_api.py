@@ -200,6 +200,7 @@ class _BatterLine:
     strikeouts: int
     stolen_bases: int
     caught_stealing: int
+    opponent_pitcher_hand: Optional[str] = None  # L / R of opposing starter
 
 
 @dataclass
@@ -258,7 +259,24 @@ def parse_boxscore(
         won=away_runs > home_runs,
     )
 
+    # Extract each side's starting pitcher's pitch hand from the payload.
+    # Used to stamp batters with opponent_pitcher_hand for platoon splits.
+    starter_hand: dict[str, Optional[str]] = {}
+    for side_key in ("home", "away"):
+        side = teams.get(side_key, {})
+        for pid_str, pdata in side.get("players", {}).items():
+            pit = pdata.get("stats", {}).get("pitching", {})
+            if pit.get("gamesStarted", 0):
+                hand_code = (
+                    pdata.get("person", {}).get("pitchHand", {}).get("code")
+                    or pdata.get("pitchHand", {}).get("code")
+                )
+                starter_hand[side_key] = hand_code
+                break
+
     for side_key, team_id in [("home", home_id), ("away", away_id)]:
+        opp_side = "away" if side_key == "home" else "home"
+        opp_hand = starter_hand.get(opp_side)
         side = teams.get(side_key, {})
         players = side.get("players", {})
         batting_order = side.get("battingOrder", [])
@@ -309,6 +327,7 @@ def parse_boxscore(
                         strikeouts=bat.get("strikeOuts", 0),
                         stolen_bases=bat.get("stolenBases", 0),
                         caught_stealing=bat.get("caughtStealing", 0),
+                        opponent_pitcher_hand=opp_hand,
                     ))
 
     return batters, pitchers, home_stats, away_stats
@@ -429,6 +448,7 @@ def upsert_player_game_log(
         strikeouts=b.strikeouts,
         stolen_bases=b.stolen_bases,
         caught_stealing=b.caught_stealing,
+        opponent_pitcher_hand=b.opponent_pitcher_hand,
     ))
 
 

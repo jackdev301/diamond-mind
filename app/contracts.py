@@ -88,6 +88,8 @@ class PlayerFormWindow:
     trend_label: TrendLabel
     as_of_date: date
     woba: Optional[float] = None
+    platoon_woba_vs_l: Optional[float] = None
+    platoon_woba_vs_r: Optional[float] = None
     insufficient_sample: bool = False
 
 

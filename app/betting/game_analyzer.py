@@ -713,12 +713,20 @@ def analyze_game(
     evidence_quality = round(min(1.0, max(0.0, evidence_quality)), 4)
 
     # ── Quant pipeline: Shin devig → shrinkage → posterior → sized Kelly ─────
+    # Only run if we have real market odds. Comparing model prob to -110/-110
+    # fallback generates false edges — every game would look like STRONG LEAN.
+    has_real_odds = home_ml_odds is not None and away_ml_odds is not None
     qe = compute_quant_edge(lean_prob, actual_odds, other_odds, evidence_quality)
-    tier = quant_recommendation(qe, model_confidence=lean_prob, evidence_quality=evidence_quality)
-    if tier == "NEED MORE INFO":
-        tier = "PASS"  # surfaced via cautions; ml_lean stays PASS
-    ml_lean = lean_side if tier in ("STRONG LEAN", "LEAN") else "PASS"
-    ml_kelly = qe.kelly_sized if ml_lean != "PASS" else 0.0
+    if not has_real_odds:
+        tier = "PASS"
+        ml_lean = "PASS"
+        ml_kelly = 0.0
+    else:
+        tier = quant_recommendation(qe, model_confidence=lean_prob, evidence_quality=evidence_quality)
+        if tier == "NEED MORE INFO":
+            tier = "PASS"
+        ml_lean = lean_side if tier in ("STRONG LEAN", "LEAN") else "PASS"
+        ml_kelly = qe.kelly_sized if ml_lean != "PASS" else 0.0
 
     # 7. Total (runs projection)
     home_rpg = home_form.runs_per_game if home_form else 4.5
@@ -784,6 +792,8 @@ def analyze_game(
         total_lean, total_conf = "PASS", 0.5
 
     # Insufficient data cautions
+    if not has_real_odds:
+        cautions.append("⚠ No market odds available — tier/Kelly suppressed. Set ODDS_API_KEY for real edges.")
     if (home_sp is None or home_sp.insufficient_sample) and (away_sp is None or away_sp.insufficient_sample):
         cautions.append("⚠ Both starters have small samples — SP edge unreliable")
 

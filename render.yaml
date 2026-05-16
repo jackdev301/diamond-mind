@@ -2,6 +2,7 @@ services:
   - type: web
     name: diamond-mind-api
     runtime: python
+    plan: free
     buildCommand: pip install -r requirements.txt && pip install -e .
     startCommand: uvicorn app.api.routes:app --host 0.0.0.0 --port $PORT
     envVars:
@@ -17,11 +18,14 @@ services:
         value: open-meteo
       - key: LOG_LEVEL
         value: INFO
-      # Set these in the Render dashboard — do not commit values here:
-      # ODDS_API_KEY, ANTHROPIC_API_KEY
+      - key: ODDS_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
 
 databases:
   - name: diamond-mind-db
     databaseName: diamond_mind
     user: diamond_mind
     plan: free
+    region: oregon

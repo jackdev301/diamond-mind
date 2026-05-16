@@ -89,13 +89,16 @@ def _compute_starter_windows(session, as_of: date) -> None:
 
 
 def _upsert_starter(session, w) -> None:
-    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-
     from app.models.players import PitcherFormWindowRow
-    stmt = sqlite_insert(PitcherFormWindowRow).values(
-        pitcher_id=w.pitcher_id,
-        window=w.window.value,
-        as_of_date=w.as_of_date,
+
+    existing = session.scalar(
+        select(PitcherFormWindowRow).where(
+            PitcherFormWindowRow.pitcher_id == w.pitcher_id,
+            PitcherFormWindowRow.window == w.window.value,
+            PitcherFormWindowRow.as_of_date == w.as_of_date,
+        )
+    )
+    fields = dict(
         starts=w.starts,
         innings_pitched=w.innings_pitched,
         era=w.era,
@@ -109,25 +112,17 @@ def _upsert_starter(session, w) -> None:
         avg_pitches_per_start=w.avg_pitches_per_start,
         trend_label=w.trend_label.value,
         insufficient_sample=w.insufficient_sample,
-    ).on_conflict_do_update(
-        index_elements=["pitcher_id", "window", "as_of_date"],
-        set_=dict(
-            starts=w.starts,
-            innings_pitched=w.innings_pitched,
-            era=w.era,
-            fip=w.fip,
-            babip=w.babip,
-            whip=w.whip,
-            k_per_9=w.k_per_9,
-            bb_per_9=w.bb_per_9,
-            hr_per_9=w.hr_per_9,
-            avg_innings_per_start=w.avg_innings_per_start,
-            avg_pitches_per_start=w.avg_pitches_per_start,
-            trend_label=w.trend_label.value,
-            insufficient_sample=w.insufficient_sample,
-        ),
     )
-    session.execute(stmt)
+    if existing is None:
+        session.add(PitcherFormWindowRow(
+            pitcher_id=w.pitcher_id,
+            window=w.window.value,
+            as_of_date=w.as_of_date,
+            **fields,
+        ))
+    else:
+        for k, v in fields.items():
+            setattr(existing, k, v)
 
 
 def _ingest_odds_and_weather(session, today_games: list, as_of: date) -> None:
@@ -224,6 +219,27 @@ def _ingest_completed_games(session, client: MLBStatsClient, yesterday: date) ->
     return ingested
 
 
+def _auto_track_picks(session, as_of: date) -> None:
+    """Log all non-PASS picks for the date with Kelly-derived units (idempotent)."""
+    import requests as _requests
+    import os as _os
+
+    port = _os.environ.get("PORT", "8000")
+    url = f"http://localhost:{port}/tracker/auto-track?game_date={as_of.isoformat()}"
+    try:
+        resp = _requests.post(url, timeout=60)
+        if resp.ok:
+            data = resp.json()
+            log.info(
+                "Auto-track: +%d new picks logged, %d already tracked.",
+                data.get("created", 0), data.get("skipped", 0),
+            )
+        else:
+            log.warning("Auto-track call returned %s: %s", resp.status_code, resp.text[:200])
+    except Exception as exc:
+        log.warning("Auto-track skipped (backend not running?): %s", exc)
+
+
 def run(as_of: date, dry_run: bool = False) -> None:
     settings = get_settings()
     yesterday = as_of - timedelta(days=1)
@@ -285,6 +301,9 @@ def run(as_of: date, dry_run: bool = False) -> None:
 
                 session.commit()
                 log.info("All changes committed.")
+
+                # 8. Auto-track all non-PASS picks for today.
+                _auto_track_picks(session, as_of)
             else:
                 log.info("[dry-run] skipping DB writes.")
 

@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: diamond-mind-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt && pip install -e .
+    startCommand: uvicorn app.api.routes:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: diamond-mind-db
+          property: connectionString
+      - key: MLB_STATS_API_BASE
+        value: https://statsapi.mlb.com/api/v1
+      - key: ODDS_API_BASE
+        value: https://api.the-odds-api.com/v4
+      - key: WEATHER_PROVIDER
+        value: open-meteo
+      - key: LOG_LEVEL
+        value: INFO
+      # Set these in the Render dashboard — do not commit values here:
+      # ODDS_API_KEY, ANTHROPIC_API_KEY
+
+databases:
+  - name: diamond-mind-db
+    databaseName: diamond_mind
+    user: diamond_mind
+    plan: free

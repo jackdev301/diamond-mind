@@ -113,11 +113,24 @@ class GameAnalysis:
 
     # Total recommendation
     total_lean: str             # "OVER", "UNDER", "PASS"
-    total_confidence: float
-    projected_total: float      # projected combined runs
+    total_tier: str = "PASS"    # "STRONG LEAN" / "LEAN" / "PASS"
+    total_confidence: float = 0.5
+    projected_total: float = 0.0      # projected combined runs
+    total_line: Optional[float] = None
+    total_kelly_fraction: float = 0.0
+
+    # Totals quant layer
+    qt_edge_quant: float = 0.0
+    qt_edge_sd: float = 0.0
+    qt_prob_positive: float = 0.5
+    qt_p_model: float = 0.5
+    qt_p_shrunk: float = 0.5
+    qt_kelly_sized: float = 0.0
+    qt_kelly_mult: float = 0.0
+    qt_growth_rate: float = 0.0
 
     # Bet sizing (Kelly vs actual line)
-    ml_kelly_fraction: float    # fraction of bankroll to bet
+    ml_kelly_fraction: float = 0.0
     ml_american_odds: int = -110  # actual line used for Kelly (default -110)
 
     # Factors
@@ -336,6 +349,8 @@ def analyze_game(
     home_ml_odds: Optional[int] = None,
     away_ml_odds: Optional[int] = None,
     total_line: Optional[float] = None,
+    over_odds: Optional[int] = None,
+    under_odds: Optional[int] = None,
     home_k_rate: Optional[float] = None,
     away_k_rate: Optional[float] = None,
     home_iso: Optional[float] = None,
@@ -781,15 +796,60 @@ def analyze_game(
                 f" — total adjusted {original:.1f} → {projected_total:.1f} runs ({run_delta:+.1f})"
             )
 
-    # Compare against actual posted line if available, else typical
+    # ── Totals quant pipeline ────────────────────────────────────────────────
+    # Convert projected_total → P(over) via a normal CDF.
+    # σ = 3.0 runs: combined-game SD is larger than per-team SD (~2.2 × √2 ≈ 3.1).
+    # We cap p_over_model at [0.15, 0.85] — extreme probabilities almost always
+    # reflect SP small-sample noise rather than genuine edge.
+    import math as _math
+    _TOTAL_SIGMA = 3.0
+    _TOTAL_PROB_CAP = 0.85  # max model confidence on either side
+
     compare_line = total_line if total_line is not None else 8.5
-    threshold = 0.6 if total_line is not None else 0.8  # tighter when real line exists
-    if projected_total > compare_line + threshold:
-        total_lean, total_conf = "OVER", min(0.65, 0.50 + (projected_total - compare_line) * 0.03)
-    elif projected_total < compare_line - threshold:
-        total_lean, total_conf = "UNDER", min(0.65, 0.50 + (compare_line - projected_total) * 0.03)
+    _z_over = (projected_total - compare_line) / _TOTAL_SIGMA
+    _p_raw = 0.5 * (1.0 + _math.erf(_z_over / _math.sqrt(2.0)))
+    p_over_model = min(_TOTAL_PROB_CAP, max(1.0 - _TOTAL_PROB_CAP, _p_raw))
+
+    has_total_odds = over_odds is not None and under_odds is not None
+    _actual_over_odds = over_odds if over_odds is not None else -110
+    _actual_under_odds = under_odds if under_odds is not None else -110
+
+    # Lean toward over or under
+    if p_over_model >= 0.5:
+        total_lean_side = "OVER"
+        p_lean_side = p_over_model
+        lean_over_odds = _actual_over_odds
+        lean_under_odds = _actual_under_odds
     else:
-        total_lean, total_conf = "PASS", 0.5
+        total_lean_side = "UNDER"
+        p_lean_side = 1.0 - p_over_model
+        lean_over_odds = _actual_under_odds
+        lean_under_odds = _actual_over_odds
+
+    qt = compute_quant_edge(
+        p_model_side=p_lean_side,
+        side_odds=lean_over_odds,
+        other_odds=lean_under_odds,
+        evidence_quality=evidence_quality,
+    )
+
+    if not has_total_odds:
+        total_tier = "PASS"
+        total_kelly = 0.0
+        total_lean = "PASS"
+        total_conf = 0.5
+    else:
+        total_tier = quant_recommendation(qt, model_confidence=p_lean_side, evidence_quality=evidence_quality)
+        if total_tier == "NEED MORE INFO":
+            total_tier = "PASS"
+        if total_tier in ("STRONG LEAN", "LEAN"):
+            total_lean = total_lean_side
+            total_kelly = qt.kelly_sized
+            total_conf = qt.prob_positive
+        else:
+            total_lean = "PASS"
+            total_kelly = 0.0
+            total_conf = 0.5
 
     # Insufficient data cautions
     if not has_real_odds:
@@ -810,8 +870,19 @@ def analyze_game(
         ml_confidence=lean_prob,
         ml_tier=tier,
         total_lean=total_lean,
+        total_tier=total_tier,
         total_confidence=total_conf,
         projected_total=projected_total,
+        total_line=compare_line,
+        total_kelly_fraction=total_kelly,
+        qt_edge_quant=qt.edge_quant,
+        qt_edge_sd=qt.edge_sd,
+        qt_prob_positive=qt.prob_positive,
+        qt_p_model=round(p_lean_side, 4),
+        qt_p_shrunk=qt.p_shrunk,
+        qt_kelly_sized=qt.kelly_sized,
+        qt_kelly_mult=qt.kelly_multiplier,
+        qt_growth_rate=qt.growth_rate,
         ml_kelly_fraction=ml_kelly,
         ml_american_odds=actual_odds,
         key_factors=factors,

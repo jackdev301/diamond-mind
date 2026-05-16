@@ -355,8 +355,43 @@ def build_team_form_window(
     games, runs, runs_allowed, wins = session.execute(stmt).one()
     losses = games - wins
 
+    # Compute OPS and estimated wOBA from PlayerGameLog for the same window.
+    ops_stmt = select(
+        func.coalesce(func.sum(PlayerGameLog.at_bats), 0),
+        func.coalesce(func.sum(PlayerGameLog.hits), 0),
+        func.coalesce(func.sum(PlayerGameLog.doubles), 0),
+        func.coalesce(func.sum(PlayerGameLog.triples), 0),
+        func.coalesce(func.sum(PlayerGameLog.home_runs), 0),
+        func.coalesce(func.sum(PlayerGameLog.walks), 0),
+        func.coalesce(func.sum(PlayerGameLog.hit_by_pitch), 0),
+        func.coalesce(func.sum(PlayerGameLog.sac_flies), 0),
+    ).where(
+        and_(
+            PlayerGameLog.team_id == team_id,
+            PlayerGameLog.game_date >= start,
+            PlayerGameLog.game_date <= end,
+        )
+    )
+    _ab, _h, _d, _t, _hr, _bb, _hbp, _sf = session.execute(ops_stmt).one()
+    _singles = max(int(_h) - int(_d) - int(_t) - int(_hr), 0)
+    _total_bases = _singles + 2 * int(_d) + 3 * int(_t) + 4 * int(_hr)
+    _obp_den = int(_ab) + int(_bb) + int(_hbp) + int(_sf)
+    _obp = _safe_div(int(_h) + int(_bb) + int(_hbp), _obp_den)
+    _slg = _safe_div(_total_bases, int(_ab))
+    computed_team_ops = round(_obp + _slg, 3)
+    _woba_denom = int(_ab) + int(_bb) + int(_hbp) + int(_sf)
+    computed_team_woba = round(
+        _safe_div(
+            0.69 * int(_bb) + 0.72 * int(_hbp) + 0.89 * _singles
+            + 1.27 * int(_d) + 1.62 * int(_t) + 2.10 * int(_hr),
+            _woba_denom,
+        ),
+        3,
+    ) if _woba_denom > 0 else None
+
     agg = aggregate_team(
-        games=games, runs=runs, runs_allowed=runs_allowed, wins=wins, losses=losses
+        games=games, runs=runs, runs_allowed=runs_allowed,
+        wins=wins, losses=losses, team_ops=computed_team_ops,
     )
     batting_rows = session.execute(
         select(PlayerGameLog).where(
@@ -442,7 +477,7 @@ def build_team_form_window(
         record_losses=losses,
         trend_label=trend,
         as_of_date=as_of_date,
-        team_woba=None,
+        team_woba=computed_team_woba,
         stolen_bases=stolen_bases,
         caught_stealing=caught_stealing,
         stolen_base_attempts=stolen_base_attempts,
@@ -790,11 +825,14 @@ def build_bullpen_state(
     *,
     team_id: int,
     as_of_date: date,
+    exclude_pitcher_ids: Optional[list[int]] = None,
 ) -> Optional[BullpenState]:
     """Build a BullpenState from PitcherGameLog rows for the 5 days prior to as_of_date.
 
     back_to_back_relievers and three_in_four_relievers are List[int] pitcher_ids
     so the fatigue scorer can consume them directly without name lookups.
+    Pass exclude_pitcher_ids (e.g. today's probable starter) to prevent a SP
+    who also pitched in relief recently from appearing in best_available.
     """
     from datetime import timedelta
 
@@ -884,9 +922,13 @@ def build_bullpen_state(
         for log, _ in sorted(rows, key=lambda r: r[0].game_date, reverse=True)
     ]
 
+    _excluded = set(exclude_pitcher_ids or [])
+
     # Build RelieverFormWindow for each reliever who appeared in the window.
     reliever_windows: list[RelieverFormWindow] = []
     for pid in by_pitcher:
+        if pid in _excluded:
+            continue
         role: RelieverRole = pitcher_roles.get(pid, "middle")  # type: ignore[assignment]
         w = build_reliever_form_window(
             session, pitcher_id=pid, role=role,

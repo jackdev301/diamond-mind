@@ -22,10 +22,17 @@ class Base(DeclarativeBase):
 
 def _build_engine() -> Engine:
     settings = get_settings()
+    url = settings.database_url
+    # Render (and some other hosts) emit postgres:// which SQLAlchemy 2.x rejects.
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
     connect_args = {}
-    if settings.database_url.startswith("sqlite"):
+    if url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
-    return create_engine(settings.database_url, future=True, connect_args=connect_args)
+    kwargs: dict = {"future": True, "connect_args": connect_args}
+    if url.startswith("postgresql"):
+        kwargs["pool_pre_ping"] = True  # drops stale connections after Render sleeps
+    return create_engine(url, **kwargs)
 
 
 engine: Engine = _build_engine()

@@ -24,6 +24,29 @@ async function post<T>(path: string, body: unknown): Promise<T | null> {
   }
 }
 
+async function patch<T>(path: string, body: unknown): Promise<T | null> {
+  try {
+    const res = await fetch(`${API}${path}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+async function del(path: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API}${path}`, { method: "DELETE" });
+    return res.ok || res.status === 204;
+  } catch {
+    return false;
+  }
+}
+
 export type Game = {
   game_id: number;
   game_date: string;
@@ -88,8 +111,19 @@ export type GameAnalysis = {
   ml_confidence: number;
   ml_tier: string;
   total_lean: string;
+  total_tier: string;
   total_confidence: number;
   projected_total: number;
+  total_line: number | null;
+  total_kelly_fraction: number;
+  qt_edge_quant: number;
+  qt_edge_sd: number;
+  qt_prob_positive: number;
+  qt_p_model: number;
+  qt_p_shrunk: number;
+  qt_kelly_sized: number;
+  qt_kelly_mult: number;
+  qt_growth_rate: number;
   ml_kelly_fraction: number;
   key_factors: string[];
   cautions: string[];
@@ -228,6 +262,32 @@ export const api = {
     get<QuantVerify>(
       `/quant/verify?model_prob=${modelProb}&side_odds=${sideOdds}&other_odds=${otherOdds}&evidence_quality=${evidence}`,
     ),
+  // ── Tracker ──────────────────────────────────────────────────────────────
+  trackerBets: (params?: { date_from?: string; date_to?: string; market?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.date_from) qs.set("date_from", params.date_from);
+    if (params?.date_to) qs.set("date_to", params.date_to);
+    if (params?.market) qs.set("market", params.market);
+    const q = qs.toString();
+    return get<BetRecord[]>(`/tracker/bets${q ? "?" + q : ""}`);
+  },
+  trackerCreateBet: (payload: BetCreatePayload) =>
+    post<BetRecord>("/tracker/bets", payload),
+  trackerSettleBet: (id: number, result: "WIN" | "LOSS" | "PUSH", units_returned?: number) =>
+    patch<BetRecord>(`/tracker/bets/${id}`, { result, units_returned }),
+  trackerDeleteBet: (id: number) => del(`/tracker/bets/${id}`),
+  trackerSummary: (params?: { date_from?: string; date_to?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.date_from) qs.set("date_from", params.date_from);
+    if (params?.date_to) qs.set("date_to", params.date_to);
+    const q = qs.toString();
+    return get<TrackerSummary>(`/tracker/summary${q ? "?" + q : ""}`);
+  },
+  trackerAutoTrack: (date: string) =>
+    post<{ created: number; skipped: number; date: string }>(
+      `/tracker/auto-track?game_date=${date}`,
+      {},
+    ),
 };
 
 export type QuantVerify = {
@@ -252,4 +312,54 @@ export type QuantVerify = {
   doubling_bets: number | null;
   ev_per_dollar: number;
   recommendation: string;
+};
+
+// ── Tracker types ──────────────────────────────────────────────────────────
+
+export type BetRecord = {
+  id: number;
+  game_id: number;
+  game_date: string;
+  market: "moneyline" | "total";
+  selection: string;
+  american_odds: number;
+  units: number;
+  result: "WIN" | "LOSS" | "PUSH" | null;
+  units_returned: number | null;
+  tier: string;
+  home_team_abbr: string;
+  away_team_abbr: string;
+  total_line: number | null;
+  projected_total: number | null;
+  created_at: string | null;
+};
+
+export type BetCreatePayload = {
+  game_id: number;
+  game_date: string;
+  market: "moneyline" | "total";
+  selection: string;
+  american_odds: number;
+  units?: number;
+  tier: string;
+  home_team_abbr: string;
+  away_team_abbr: string;
+  total_line?: number | null;
+  projected_total?: number | null;
+};
+
+export type TrackerSummaryGroup = {
+  bets: number;
+  wins: number;
+  losses: number;
+  pushes: number;
+  pending: number;
+  units_wagered: number;
+  units_net: number;
+};
+
+export type TrackerSummary = {
+  ml: TrackerSummaryGroup;
+  total: TrackerSummaryGroup;
+  combined: TrackerSummaryGroup;
 };

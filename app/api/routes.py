@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.contracts import WindowKey
-from app.database import SessionLocal
+from app.database import SessionLocal, engine, Base
 from app.ingestion.park_factors import get_park_factor
 from app.features.recent_form import (
     FIP_CONSTANT,
@@ -38,6 +38,7 @@ from app.features.recent_form import (
 from app.features.bullpen_vulnerability import score_bullpen
 from app.models.entities import Player, Team
 from app.models.games import Game, PitcherGameLog, PlayerGameLog, TeamGameLog
+from app.models.tracker import BetRecord, compute_units_returned
 
 app = FastAPI(
     title="Diamond Mind API",
@@ -417,14 +418,16 @@ def team_batting(
         )
     ).scalars().all()
 
-    games = db.execute(
-        select(TeamGameLog.game_id).where(
+    tgl_rows = db.execute(
+        select(TeamGameLog.game_id, TeamGameLog.runs).where(
             TeamGameLog.team_id == team_id,
             TeamGameLog.game_date >= start,
             TeamGameLog.game_date <= end,
         )
     ).all()
-    game_count = len(games)
+    game_count = len(tgl_rows)
+    total_runs = sum(r for _, r in tgl_rows if r is not None)
+    runs_per_game = round(total_runs / game_count, 2) if game_count else None
 
     pa = sum(r.plate_appearances for r in rows)
     ab = sum(r.at_bats for r in rows)
@@ -466,6 +469,7 @@ def team_batting(
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
         "games": game_count,
+        "runs_per_game": runs_per_game,
         "plate_appearances": pa,
         "at_bats": ab,
         "hits": hits,
@@ -660,8 +664,9 @@ def game_bundle(
         )
         return _dc(w)
 
-    def _bullpen(team_id: int):
-        state = build_bullpen_state(db, team_id=team_id, as_of_date=as_of)
+    def _bullpen(team_id: int, probable_starter_id: Optional[int] = None):
+        exclude = [probable_starter_id] if probable_starter_id else None
+        state = build_bullpen_state(db, team_id=team_id, as_of_date=as_of, exclude_pitcher_ids=exclude)
         if state is None:
             return None
         return _dc(score_bullpen(state))
@@ -694,8 +699,8 @@ def game_bundle(
         },
         "home_starter": _starter(game.home_probable_starter_id),
         "away_starter": _starter(game.away_probable_starter_id),
-        "home_bullpen": _bullpen(home_id),
-        "away_bullpen": _bullpen(away_id),
+        "home_bullpen": _bullpen(home_id, game.home_probable_starter_id),
+        "away_bullpen": _bullpen(away_id, game.away_probable_starter_id),
         "park_factors": {
             "venue": game.venue,
             "runs": get_park_factor(game.venue).runs,
@@ -741,8 +746,9 @@ def game_context(
         )
         return _dc(w)
 
-    def _bullpen(team_id: int):
-        state = build_bullpen_state(db, team_id=team_id, as_of_date=as_of)
+    def _bullpen(team_id: int, probable_starter_id: Optional[int] = None):
+        exclude = [probable_starter_id] if probable_starter_id else None
+        state = build_bullpen_state(db, team_id=team_id, as_of_date=as_of, exclude_pitcher_ids=exclude)
         if state is None:
             return None
         return _dc(score_bullpen(state))
@@ -793,8 +799,8 @@ def game_context(
         },
         "home_starter": _starter(game.home_probable_starter_id),
         "away_starter": _starter(game.away_probable_starter_id),
-        "home_bullpen": _bullpen(home_id),
-        "away_bullpen": _bullpen(away_id),
+        "home_bullpen": _bullpen(home_id, game.home_probable_starter_id),
+        "away_bullpen": _bullpen(away_id, game.away_probable_starter_id),
         "weather": weather,
         "analysis": _build_analysis_cached(game_id, as_of, db),
     }
@@ -947,8 +953,9 @@ def _build_analysis(game_id: int, as_of: date, db: Session):
             window=WindowKey.LAST_5_STARTS, as_of_date=as_of,
         )
 
-    def _bp(team_id):
-        state = build_bullpen_state(db, team_id=team_id, as_of_date=as_of)
+    def _bp(team_id, probable_starter_id=None):
+        exclude = [probable_starter_id] if probable_starter_id else None
+        state = build_bullpen_state(db, team_id=team_id, as_of_date=as_of, exclude_pitcher_ids=exclude)
         return score_bullpen(state) if state else None
 
     def _form(team_id):
@@ -1080,16 +1087,28 @@ def _build_analysis(game_id: int, as_of: date, db: Session):
             return None
         return (as_of - last).days
 
-    # Fetch actual odds if available — prefer DraftKings, fall back to any bookmaker
+    # Fetch actual odds if available — prefer DraftKings, fall back to any bookmaker.
+    # Selections are stored as lowercased team names from The Odds API (e.g. "new york mets"),
+    # so we match by substring against the team's DB name rather than "home"/"away".
     from app.models.odds import OddsSnapshotRow
     from sqlalchemy import desc as _desc
     _preferred = get_settings().preferred_bookmaker
 
+    def _team_name_fragment(team_id: int) -> str:
+        t = db.get(Team, team_id)
+        return t.name.lower() if t else ""
+
+    _home_frag = _team_name_fragment(home_id)
+    _away_frag = _team_name_fragment(away_id)
+
     def _get_ml_odds(side: str) -> Optional[int]:
+        frag = _home_frag if side == "home" else _away_frag
+        if not frag:
+            return None
         base_where = [
             OddsSnapshotRow.game_id == game_id,
             OddsSnapshotRow.market == "moneyline",
-            OddsSnapshotRow.selection == side,
+            OddsSnapshotRow.selection.ilike(f"%{frag}%"),
         ]
         row = db.execute(
             select(OddsSnapshotRow).where(*base_where, OddsSnapshotRow.bookmaker == _preferred)
@@ -1102,11 +1121,12 @@ def _build_analysis(game_id: int, as_of: date, db: Session):
             ).scalar_one_or_none()
         return row.american_odds if row else None
 
-    def _get_total_line() -> Optional[float]:
+    def _get_total_odds(selection: str) -> tuple[Optional[float], Optional[int]]:
+        """Return (line, american_odds) for the given total selection ('over'/'under')."""
         base_where = [
             OddsSnapshotRow.game_id == game_id,
             OddsSnapshotRow.market == "total",
-            OddsSnapshotRow.selection == "over",
+            OddsSnapshotRow.selection == selection,
         ]
         row = db.execute(
             select(OddsSnapshotRow).where(*base_where, OddsSnapshotRow.bookmaker == _preferred)
@@ -1117,7 +1137,17 @@ def _build_analysis(game_id: int, as_of: date, db: Session):
                 select(OddsSnapshotRow).where(*base_where)
                 .order_by(_desc(OddsSnapshotRow.captured_at)).limit(1)
             ).scalar_one_or_none()
-        return row.line if row else None
+        return (row.line, row.american_odds) if row else (None, None)
+
+    _total_line, _over_odds = _get_total_odds("over")
+    _total_line_u, _under_odds = _get_total_odds("under")
+    _total_line = _total_line or _total_line_u  # either row has the line
+    # Sanity: MLB game totals should be between 5 and 15 runs.
+    # Lines outside that range indicate mismatched odds (alternate lines, wrong sport).
+    if _total_line is not None and not (5.0 <= _total_line <= 15.0):
+        _total_line = None
+        _over_odds = None
+        _under_odds = None
 
     # Weather — best available snapshot
     weather_row = db.execute(
@@ -1147,14 +1177,16 @@ def _build_analysis(game_id: int, as_of: date, db: Session):
         away_abbr=away_team.abbr if away_team else "???",
         home_sp=_sp(game.home_probable_starter_id),
         away_sp=_sp(game.away_probable_starter_id),
-        home_bullpen=_bp(home_id),
-        away_bullpen=_bp(away_id),
+        home_bullpen=_bp(home_id, game.home_probable_starter_id),
+        away_bullpen=_bp(away_id, game.away_probable_starter_id),
         home_form=_form(home_id),
         away_form=_form(away_id),
         weather=weather,
         home_ml_odds=_get_ml_odds("home"),
         away_ml_odds=_get_ml_odds("away"),
-        total_line=_get_total_line(),
+        total_line=_total_line,
+        over_odds=_over_odds,
+        under_odds=_under_odds,
         home_k_rate=home_batting.get("k_rate"),
         away_k_rate=away_batting.get("k_rate"),
         home_iso=home_batting.get("iso"),
@@ -1361,8 +1393,9 @@ def slate(
         .order_by(Game.id)
     ).all()
 
-    def _bullpen_dict(team_id: int):
-        state = build_bullpen_state(db, team_id=team_id, as_of_date=game_date)
+    def _bullpen_dict(team_id: int, probable_starter_id: Optional[int] = None):
+        exclude = [probable_starter_id] if probable_starter_id else None
+        state = build_bullpen_state(db, team_id=team_id, as_of_date=game_date, exclude_pitcher_ids=exclude)
         if state is None:
             return None
         return _dc(score_bullpen(state))
@@ -1381,8 +1414,8 @@ def slate(
             "away_team_abbr": away_t.abbr,
             "home_probable_starter_id": game.home_probable_starter_id,
             "away_probable_starter_id": game.away_probable_starter_id,
-            "home_bullpen": _bullpen_dict(game.home_team_id),
-            "away_bullpen": _bullpen_dict(game.away_team_id),
+            "home_bullpen": _bullpen_dict(game.home_team_id, game.home_probable_starter_id),
+            "away_bullpen": _bullpen_dict(game.away_team_id, game.away_probable_starter_id),
             "analysis": analysis,
         })
 
@@ -1433,3 +1466,323 @@ def polish_report_endpoint(body: dict):
     else:
         method = "cli"
     return {"markdown": markdown, "polished": was_polished, "method": method}
+
+
+# ---------------------------------------------------------------------------
+# Tracker — picks performance log
+# ---------------------------------------------------------------------------
+
+# Ensure the bet_records table exists (additive, never destructive).
+Base.metadata.create_all(engine, tables=[BetRecord.__table__])
+
+
+class _BetCreate(dict):
+    """Thin typed wrapper — FastAPI will parse from JSON body."""
+
+
+from pydantic import BaseModel as _BaseModel
+
+
+class BetCreateBody(_BaseModel):
+    game_id: int
+    game_date: str          # "YYYY-MM-DD"
+    market: str             # "moneyline" | "total"
+    selection: str          # team abbr or "OVER"/"UNDER"
+    american_odds: int
+    units: float = 1.0
+    tier: str               # "STRONG LEAN" | "LEAN"
+    home_team_abbr: str
+    away_team_abbr: str
+    total_line: Optional[float] = None
+    projected_total: Optional[float] = None
+
+
+class BetSettleBody(_BaseModel):
+    result: str                         # "WIN" | "LOSS" | "PUSH"
+    units_returned: Optional[float] = None
+
+
+def _bet_to_dict(b: BetRecord) -> dict:
+    return {
+        "id": b.id,
+        "game_id": b.game_id,
+        "game_date": b.game_date.isoformat(),
+        "market": b.market,
+        "selection": b.selection,
+        "american_odds": b.american_odds,
+        "units": b.units,
+        "result": b.result,
+        "units_returned": b.units_returned,
+        "tier": b.tier,
+        "home_team_abbr": b.home_team_abbr,
+        "away_team_abbr": b.away_team_abbr,
+        "total_line": b.total_line,
+        "projected_total": b.projected_total,
+        "created_at": b.created_at.isoformat() if b.created_at else None,
+    }
+
+
+@app.get("/tracker/bets", tags=["tracker"])
+def list_bets(
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
+    market: Optional[str] = Query(None),
+    db: Session = Depends(_get_db),
+):
+    """Return tracked bets, optionally filtered by date range and market."""
+    stmt = select(BetRecord)
+    if date_from:
+        stmt = stmt.where(BetRecord.game_date >= date_from)
+    if date_to:
+        stmt = stmt.where(BetRecord.game_date <= date_to)
+    if market:
+        stmt = stmt.where(BetRecord.market == market)
+    stmt = stmt.order_by(BetRecord.game_date.desc(), BetRecord.id.desc())
+    rows = db.execute(stmt).scalars().all()
+    return [_bet_to_dict(b) for b in rows]
+
+
+@app.post("/tracker/bets", tags=["tracker"], status_code=201)
+def create_bet(body: BetCreateBody, db: Session = Depends(_get_db)):
+    """Track a new bet. Returns the created record."""
+    from datetime import date as _date
+    gd = _date.fromisoformat(body.game_date)
+    record = BetRecord(
+        game_id=body.game_id,
+        game_date=gd,
+        market=body.market,
+        selection=body.selection,
+        american_odds=body.american_odds,
+        units=body.units,
+        tier=body.tier,
+        home_team_abbr=body.home_team_abbr,
+        away_team_abbr=body.away_team_abbr,
+        total_line=body.total_line,
+        projected_total=body.projected_total,
+        result=None,
+        units_returned=None,
+        created_at=datetime.utcnow(),
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return _bet_to_dict(record)
+
+
+@app.patch("/tracker/bets/{bet_id}", tags=["tracker"])
+def settle_bet(bet_id: int, body: BetSettleBody, db: Session = Depends(_get_db)):
+    """Settle a bet. Auto-computes units_returned if not provided."""
+    record = db.get(BetRecord, bet_id)
+    if record is None:
+        raise HTTPException(404, f"Bet {bet_id} not found")
+    valid = {"WIN", "LOSS", "PUSH"}
+    if body.result not in valid:
+        raise HTTPException(400, f"result must be one of {valid}")
+    record.result = body.result
+    if body.units_returned is not None:
+        record.units_returned = body.units_returned
+    else:
+        record.units_returned = compute_units_returned(body.result, record.units, record.american_odds)
+    db.commit()
+    db.refresh(record)
+    return _bet_to_dict(record)
+
+
+@app.delete("/tracker/bets/{bet_id}", tags=["tracker"], status_code=204)
+def delete_bet(bet_id: int, db: Session = Depends(_get_db)):
+    """Remove a tracked bet."""
+    record = db.get(BetRecord, bet_id)
+    if record is None:
+        raise HTTPException(404, f"Bet {bet_id} not found")
+    db.delete(record)
+    db.commit()
+    return None
+
+
+@app.get("/tracker/summary", tags=["tracker"])
+def tracker_summary(
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
+    db: Session = Depends(_get_db),
+):
+    """Return win/loss/units summary split by market and combined."""
+    stmt = select(BetRecord)
+    if date_from:
+        stmt = stmt.where(BetRecord.game_date >= date_from)
+    if date_to:
+        stmt = stmt.where(BetRecord.game_date <= date_to)
+    rows = db.execute(stmt).scalars().all()
+
+    def _stats(bets):
+        wins = sum(1 for b in bets if b.result == "WIN")
+        losses = sum(1 for b in bets if b.result == "LOSS")
+        pushes = sum(1 for b in bets if b.result == "PUSH")
+        pending = sum(1 for b in bets if b.result is None)
+        wagered = sum(b.units for b in bets)
+        net = sum(b.units_returned for b in bets if b.units_returned is not None)
+        return {
+            "bets": len(bets),
+            "wins": wins,
+            "losses": losses,
+            "pushes": pushes,
+            "pending": pending,
+            "units_wagered": round(wagered, 2),
+            "units_net": round(net, 2),
+        }
+
+    ml = [b for b in rows if b.market == "moneyline"]
+    total = [b for b in rows if b.market == "total"]
+    return {
+        "ml": _stats(ml),
+        "total": _stats(total),
+        "combined": _stats(rows),
+    }
+
+
+_ACTIONABLE_TIERS = {"STRONG LEAN", "LEAN"}
+_MIN_UNITS = 0.5
+_MAX_UNITS = 5.0
+
+
+def _kelly_units(kelly_sized: float) -> float:
+    """Convert a Kelly fraction to units (bankroll = 100u), clamped [0.5, 5.0]."""
+    raw = round(kelly_sized * 100, 1)
+    return max(_MIN_UNITS, min(_MAX_UNITS, raw))
+
+
+@app.post("/tracker/auto-track", tags=["tracker"])
+def auto_track(
+    game_date: date = Query(..., description="YYYY-MM-DD"),
+    db: Session = Depends(_get_db),
+):
+    """Automatically log all non-PASS picks for a date with Kelly-derived units.
+
+    Idempotent — skips any (game_id, market) pair that already has a record.
+    Returns a summary of how many bets were created vs already-tracked.
+    """
+    from app.models.entities import Team as TeamModel
+    HomeTeam = aliased(TeamModel)
+    AwayTeam = aliased(TeamModel)
+
+    rows = db.execute(
+        select(Game, HomeTeam, AwayTeam)
+        .join(HomeTeam, Game.home_team_id == HomeTeam.id)
+        .join(AwayTeam, Game.away_team_id == AwayTeam.id)
+        .where(Game.game_date == game_date)
+        .order_by(Game.id)
+    ).all()
+
+    created = 0
+    skipped = 0
+
+    from app.models.odds import OddsSnapshotRow
+
+    for game, home_t, away_t in rows:
+        analysis = _build_analysis_cached(game.id, game_date, db)
+        if analysis is None:
+            continue
+
+        home_abbr = home_t.abbr
+        away_abbr = away_t.abbr
+
+        # ── Moneyline ────────────────────────────────────────────────────────
+        if analysis.get("ml_tier") in _ACTIONABLE_TIERS:
+            existing = db.execute(
+                select(BetRecord).where(
+                    BetRecord.game_id == game.id,
+                    BetRecord.market == "moneyline",
+                )
+            ).scalar_one_or_none()
+            if existing is None:
+                lean = analysis.get("ml_lean", "")
+                if lean == home_abbr:
+                    selection = home_abbr
+                    odds = analysis.get("ml_american_odds", 0)
+                else:
+                    selection = away_abbr
+                    away_team = db.get(Team, game.away_team_id)
+                    away_frag = away_team.name.lower() if away_team else away_abbr.lower()
+                    away_odds_row = db.execute(
+                        select(OddsSnapshotRow.american_odds)
+                        .where(
+                            OddsSnapshotRow.game_id == game.id,
+                            OddsSnapshotRow.market == "h2h",
+                            OddsSnapshotRow.selection.ilike(f"%{away_frag}%"),
+                        )
+                        .order_by(OddsSnapshotRow.captured_at.desc())
+                        .limit(1)
+                    ).scalar_one_or_none()
+                    odds = away_odds_row if away_odds_row is not None else analysis.get("ml_american_odds", 0)
+
+                units = _kelly_units(analysis.get("q_kelly_sized", 0.01))
+                db.add(BetRecord(
+                    game_id=game.id,
+                    game_date=game_date,
+                    market="moneyline",
+                    selection=selection,
+                    american_odds=int(odds),
+                    units=units,
+                    tier=analysis["ml_tier"],
+                    home_team_abbr=home_abbr,
+                    away_team_abbr=away_abbr,
+                    total_line=None,
+                    projected_total=None,
+                    result=None,
+                    units_returned=None,
+                    created_at=datetime.utcnow(),
+                ))
+                created += 1
+            else:
+                skipped += 1
+
+        # ── Total (over/under) ────────────────────────────────────────────────
+        if analysis.get("total_tier") in _ACTIONABLE_TIERS:
+            existing = db.execute(
+                select(BetRecord).where(
+                    BetRecord.game_id == game.id,
+                    BetRecord.market == "total",
+                )
+            ).scalar_one_or_none()
+            if existing is None:
+                total_lean = analysis.get("total_lean", "OVER")
+                if total_lean not in ("OVER", "UNDER"):
+                    proj = analysis.get("projected_total")
+                    line = analysis.get("total_line")
+                    total_lean = "OVER" if (proj and line and proj > line) else "UNDER"
+
+                side_frag = "over" if total_lean == "OVER" else "under"
+                total_odds_row = db.execute(
+                    select(OddsSnapshotRow.american_odds)
+                    .where(
+                        OddsSnapshotRow.game_id == game.id,
+                        OddsSnapshotRow.market == "totals",
+                        OddsSnapshotRow.selection.ilike(f"%{side_frag}%"),
+                    )
+                    .order_by(OddsSnapshotRow.captured_at.desc())
+                    .limit(1)
+                ).scalar_one_or_none()
+                total_odds = int(total_odds_row) if total_odds_row is not None else -110
+
+                units = _kelly_units(analysis.get("qt_kelly_sized", 0.01))
+                db.add(BetRecord(
+                    game_id=game.id,
+                    game_date=game_date,
+                    market="total",
+                    selection=total_lean,
+                    american_odds=total_odds,
+                    units=units,
+                    tier=analysis["total_tier"],
+                    home_team_abbr=home_abbr,
+                    away_team_abbr=away_abbr,
+                    total_line=analysis.get("total_line"),
+                    projected_total=analysis.get("projected_total"),
+                    result=None,
+                    units_returned=None,
+                    created_at=datetime.utcnow(),
+                ))
+                created += 1
+            else:
+                skipped += 1
+
+    db.commit()
+    return {"created": created, "skipped": skipped, "date": game_date.isoformat()}

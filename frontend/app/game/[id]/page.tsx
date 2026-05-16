@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { api, type GameBundle, type WeatherData, type GameAnalysis } from "@/lib/api";
@@ -373,6 +373,127 @@ function AnalysisPanel({ a }: { a: GameAnalysis }) {
   );
 }
 
+function MathBlock({ label, formula, explanation }: { label: string; formula: string; explanation: string }) {
+  return (
+    <div style={{ marginBottom: "16px", paddingBottom: "16px", borderBottom: "1px solid var(--border)" }}>
+      <div style={{ fontFamily: "var(--font-body)", fontSize: "12px", fontWeight: 600, color: "var(--text-2)", marginBottom: "4px" }}>{label}</div>
+      <div style={{
+        fontFamily: "var(--font-mono)",
+        fontSize: "12px",
+        color: "var(--blue)",
+        background: "rgba(59,130,246,0.06)",
+        border: "1px solid rgba(59,130,246,0.15)",
+        borderRadius: "4px",
+        padding: "8px 12px",
+        marginBottom: "6px",
+        letterSpacing: "0.01em",
+        whiteSpace: "pre",
+      }}>
+        {formula}
+      </div>
+      <div style={{ fontFamily: "var(--font-body)", fontSize: "11px", color: "var(--text-3)", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{explanation}</div>
+    </div>
+  );
+}
+
+function ModelMethodologyPanel({ homeAbbr, awayAbbr, analysis }: {
+  homeAbbr: string;
+  awayAbbr: string;
+  analysis: GameAnalysis | null;
+}) {
+  const [open, setOpen] = React.useState(false);
+
+  return (
+    <div style={{ marginBottom: "24px" }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          background: "none",
+          border: "1px solid var(--border)",
+          borderRadius: "4px",
+          color: "var(--text-3)",
+          fontFamily: "var(--font-mono)",
+          fontSize: "11px",
+          padding: "6px 12px",
+          cursor: "pointer",
+          letterSpacing: "0.04em",
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+        }}
+      >
+        <span style={{ fontSize: "10px" }}>{open ? "▲" : "▼"}</span>
+        {open ? "HIDE" : "SHOW"} MODEL MATH
+      </button>
+
+      {open && (
+        <div style={{ marginTop: "12px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "6px", padding: "20px" }}>
+          <div style={{ fontSize: "11px", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-2)", textTransform: "uppercase", marginBottom: "16px" }}>
+            How This Model Works
+          </div>
+
+          <MathBlock
+            label="Step 1 — Base Win Probability (Home Advantage)"
+            formula="P_home = 0.535"
+            explanation="Every game starts at 53.5% for the home team. MLB home teams won 53.5% of games from 2022-2024 (down from the old 54% figure — home advantage is slowly declining as travel improves and pitcher usage changes)."
+          />
+
+          <MathBlock
+            label="Step 2 — Starting Pitcher Quality via FIP"
+            formula={`FIP = (13 × HR/9  +  3 × BB/9  −  2 × K/9) / 9  +  3.20\n\nP_home += (away_FIP − home_FIP) × 0.018`}
+            explanation="FIP (Fielding-Independent Pitching) strips out luck on balls in play and focuses on what a pitcher truly controls: home runs, walks, and strikeouts. Lower FIP = better pitcher. The constant 3.20 anchors FIP to the same scale as ERA. A 1.0 FIP advantage shifts win probability by 1.8%."
+          />
+
+          <MathBlock
+            label="Step 3 — Bullpen Vulnerability"
+            formula={`Vulnerability = 0.55 × Fatigue  +  0.45 × (100 − AvailableQuality)\n\nP_home += (away_vuln − home_vuln) × 0.0012`}
+            explanation="Bullpen vulnerability (0–100) combines how tired the relievers are with how good the available (non-tired) arms are. A 10-point vulnerability edge shifts win probability by 1.2%. If a starter averages under 5.5 IP, the bullpen weight doubles because they'll be used earlier."
+          />
+
+          <MathBlock
+            label="Step 4 — Offensive Quality"
+            formula={`off_adj = [(home_R/G − away_RA/G) − (away_R/G − home_RA/G)] × 0.025\n          + (home_wOBA − away_wOBA) × 0.15\n\nwOBA league avg = .310  (2024 FanGraphs)`}
+            explanation={`wOBA (Weighted On-Base Average) weights each way of reaching base by its actual run value:\n  wOBA = (0.69×BB + 0.72×HBP + 0.89×1B + 1.27×2B + 1.62×3B + 2.10×HR) / PA\nEach 0.010 wOBA above average adds 1.5% to win probability.`}
+          />
+
+          <MathBlock
+            label="Step 5 — Projected Total Runs (for O/U)"
+            formula={`proj_home = (home_R/G + away_RA/G) / 2  × SP_suppression\nproj_away = (away_R/G + home_RA/G) / 2  × SP_suppression\n\nSP_suppression = min(1.2, max(0.5, 3.5 / FIP))\nTotal = proj_home + proj_away  × ISO_adj  × park_factor`}
+            explanation="We average each team's run scoring vs the opponent's run prevention, then reduce it based on how good the starter is (FIP of 3.50 = neutral 1.0×). ISO (Isolated Power = SLG − AVG, league avg .162) adjusts for extra-base hit power. Park factor scales the total up or down based on historical run environment at this ballpark."
+          />
+
+          <MathBlock
+            label="Step 6 — Edge and Kelly Bet Sizing"
+            formula={`Book implied% = |odds| / (|odds| + 100)   [for negative odds like −110]\nBook implied% = 100 / (odds + 100)        [for positive odds]\n\nEdge = model_probability − book_implied%\n\nKelly fraction = (b × p − q) / b  ×  0.25\n  where  b = payout per $1 risked\n         p = model win probability\n         q = 1 − p  (lose probability)`}
+            explanation={`The Kelly Criterion is a mathematical formula that tells you what fraction of your bankroll to bet to maximize long-run growth. We use "fractional Kelly" (×0.25) as a safety margin — full Kelly is theoretically optimal but volatile in practice. Only bet when edge > 3% (LEAN) or edge > 6% (STRONG LEAN).`}
+          />
+
+          {analysis && (
+            <div style={{ marginTop: "4px", paddingTop: "14px", borderTop: "1px solid var(--border)" }}>
+              <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-3)", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.04em" }}>This Game — Numbers</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                {[
+                  { label: `${homeAbbr} win prob`, val: `${Math.round(analysis.model_home_win_prob * 100)}%` },
+                  { label: `${awayAbbr} win prob`, val: `${Math.round(analysis.model_away_win_prob * 100)}%` },
+                  { label: "Book implied%", val: `${Math.round(analysis.implied_prob * 100)}%` },
+                  { label: "Model edge", val: analysis.ml_lean !== "PASS" ? `+${((analysis.ml_confidence - analysis.implied_prob) * 100).toFixed(1)}%` : "N/A" },
+                  { label: "Projected total", val: `${analysis.projected_total.toFixed(1)} runs` },
+                  { label: "Kelly fraction", val: analysis.ml_kelly_fraction > 0 ? `${(analysis.ml_kelly_fraction * 100).toFixed(1)}% of bankroll` : "0% (no bet)" },
+                ].map(({ label, val }) => (
+                  <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid var(--border)" }}>
+                    <span style={{ fontSize: "11px", color: "var(--text-3)" }}>{label}</span>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text)", fontWeight: 600 }}>{val}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [bundle, setBundle] = useState<GameBundle | null>(null);
@@ -452,6 +573,9 @@ export default function GameDetailPage() {
 
       {/* Analysis */}
       {analysis && <AnalysisPanel a={analysis} />}
+
+      {/* Model methodology */}
+      <ModelMethodologyPanel homeAbbr={bundle.home_team_abbr} awayAbbr={bundle.away_team_abbr} analysis={analysis} />
     </div>
   );
 }

@@ -212,9 +212,17 @@ def _offense_adj(home_form: Optional[TeamFormWindow], away_form: Optional[TeamFo
     if abs(net) > 0.01:
         side = "HOME" if net > 0 else "AWAY"
         if home_woba and away_woba:
-            edge_str = f"{side} offense edge: {home_off:.1f} R/G, wOBA {home_woba:.3f} vs {away_woba:.3f}"
+            woba_gap = abs(home_woba - away_woba)
+            edge_str = (
+                f"{side} offense edge: {home_off:.1f} R/G wOBA {home_woba:.3f}"
+                f" vs {away_off:.1f} R/G wOBA {away_woba:.3f}"
+                f" — wOBA gap {woba_gap:.3f} → +{abs(net) * 100:.1f}% net shift"
+            )
         else:
-            edge_str = f"{side} offense edge: {home_off:.1f} vs {away_def:.1f} R/G allowed"
+            edge_str = (
+                f"{side} offense edge: HOME {home_off:.1f} R/G vs {away_def:.1f} RA/G allowed"
+                f" → +{abs(net) * 100:.1f}% net shift"
+            )
     return net, edge_str
 
 
@@ -258,14 +266,19 @@ def _sp_factor_str(home_sp: Optional[PitcherFormWindow], away_sp: Optional[Pitch
     if home_fip is None and away_fip is None:
         return "", "Probable starters TBD — no SP edge calculable"
     if home_fip is None:
-        return f"AWAY SP: FIP {away_fip:.2f}", f"{away_sp.pitcher_name} starting (AWAY) — home SP TBD"
+        return f"AWAY SP: FIP {away_fip:.2f}", f"{away_sp.pitcher_name} (AWAY) FIP {away_fip:.2f} — home SP TBD"
     if away_fip is None:
-        return f"HOME SP: FIP {home_fip:.2f}", f"{home_sp.pitcher_name} starting (HOME) — away SP TBD"
+        return f"HOME SP: FIP {home_fip:.2f}", f"{home_sp.pitcher_name} (HOME) FIP {home_fip:.2f} — away SP TBD"
 
     diff = away_fip - home_fip
     better = "HOME" if diff > 0 else "AWAY"
-    name = home_sp.pitcher_name if diff > 0 else away_sp.pitcher_name
-    adv = f"{better} SP edge: {name} FIP {min(home_fip, away_fip):.2f} vs {max(home_fip, away_fip):.2f}"
+    better_name = home_sp.pitcher_name if diff > 0 else away_sp.pitcher_name
+    worse_name = away_sp.pitcher_name if diff > 0 else home_sp.pitcher_name
+    adv = (
+        f"{better} SP edge: {better_name} FIP {min(home_fip, away_fip):.2f}"
+        f" vs {worse_name} FIP {max(home_fip, away_fip):.2f}"
+        f" — {abs(diff):.2f} run gap → +{abs(diff) * FIP_SCALE * 100:.1f}% win prob shift"
+    )
     factor = adv if abs(diff) > 0.3 else ""
     return adv, factor
 
@@ -366,7 +379,8 @@ def analyze_game(
     ]:
         if sp and sp.k_per_9 and sp.k_per_9 >= 9.0 and team_k_rate and team_k_rate >= K_RATE_HIGH:
             factors.append(
-                f"{side_label} SP strikeout pitcher ({sp.k_per_9:.1f} K/9) vs high-K% {opp_label} lineup ({team_k_rate:.1%}) — amplified edge"
+                f"{side_label} K matchup: {sp.k_per_9:.1f} K/9 pitcher vs {opp_label} lineup {team_k_rate:.1%} K%"
+                f" (lg avg 22.6%) — double strikeout environment → +1.2% win prob"
             )
             adj = 0.012 if side_label == "HOME" else -0.012
             prob += adj
@@ -397,10 +411,14 @@ def analyze_game(
     bp_edge = ""
     if abs(vuln_diff) >= 10:
         worse = "AWAY" if vuln_diff > 0 else "HOME"
-        bp_edge = f"{worse} bullpen vulnerable: {max(home_vuln, away_vuln):.0f}/100 vs {min(home_vuln, away_vuln):.0f}/100"
+        bp_adj_pct = abs(bp_adj) * 100
+        bp_edge = (
+            f"{worse} bullpen exposed: {max(home_vuln, away_vuln):.0f}/100 vs {min(home_vuln, away_vuln):.0f}/100"
+            f" — {abs(vuln_diff):.0f}-pt gap → +{bp_adj_pct:.1f}% win prob shift"
+        )
         factors.append(bp_edge)
         if max(home_vuln, away_vuln) >= 70:
-            cautions.append(f"⚠ {worse} bullpen at HIGH vulnerability — late-game risk")
+            cautions.append(f"⚠ {worse} bullpen HIGH vulnerability (≥70) — late-game risk")
 
     # 4. Offense / defense
     off_adj, off_str = _offense_adj(home_form, away_form)
@@ -507,7 +525,10 @@ def analyze_game(
             adj = 0.012 if side_label == "HOME" else -0.012
             prob += adj
             comp_off += adj
-            factors.append(f"{side_label} lineup patient at plate: {bb_rate:.1%} BB% — on-base advantage")
+            factors.append(
+                f"{side_label} lineup patient: {bb_rate:.1%} BB% (lg avg 8.5%, threshold 10.5%)"
+                f" — working counts, on-base advantage → +1.2% win prob"
+            )
         elif bb_rate <= BB_RATE_LOW:
             adj = -0.008 if side_label == "HOME" else +0.008
             prob += adj
@@ -533,14 +554,16 @@ def analyze_game(
             prob += adj
             comp_fip += adj
             factors.append(
-                f"{side_label} SP BABIP {babip:.3f} — balls in play hurting results, positive regression likely"
+                f"{side_label} SP BABIP {babip:.3f} (lg avg .298) — 1.4+ SD above average, ERA inflated by bad luck"
+                f" → +1.5% positive regression adjustment"
             )
         elif babip <= BABIP_LOW:
             adj = -0.015 if side_label == "HOME" else 0.015
             prob += adj
             comp_fip += adj
             cautions.append(
-                f"⚠ {side_label} SP BABIP {babip:.3f} — may be running lucky, regression risk"
+                f"⚠ {side_label} SP BABIP {babip:.3f} (lg avg .298) — 1.1+ SD below average, ERA flattered by luck"
+                f" → −1.5% regression risk adjustment"
             )
 
     # Speed / pressure signal — use form window SB success rate if available
@@ -681,7 +704,11 @@ def analyze_game(
             projected_total = round(projected_total * pf, 1)
             comp_park = round((projected_total - original) * 0.005, 4)
             direction = "hitter-friendly" if pf > 1.0 else "pitcher-friendly"
-            factors.append(f"Park factor {pf:.2f}x — {venue} is {direction}")
+            run_delta = projected_total - original
+            factors.append(
+                f"Park factor {pf:.2f}x at {venue} ({direction})"
+                f" — total adjusted {original:.1f} → {projected_total:.1f} runs ({run_delta:+.1f})"
+            )
 
     # Compare against actual posted line if available, else typical
     compare_line = total_line if total_line is not None else 8.5

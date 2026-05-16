@@ -88,7 +88,7 @@ def test_analyze_game_uses_real_line_for_edge_and_kelly():
     assert analysis.ml_american_odds == -105
     assert analysis.implied_prob == pytest.approx(105 / 205)
     assert analysis.ml_kelly_fraction > 0
-    assert any("strikeout pitcher" in factor for factor in analysis.key_factors)
+    assert any("K matchup" in factor or "K/9" in factor for factor in analysis.key_factors)
     assert any("ISO" in factor for factor in analysis.key_factors)
 
 

@@ -77,13 +77,34 @@ function PickCard({ pick, index }: { pick: GameAnalysis; index: number }) {
             {isActionable ? (
               <div>
                 <div style={{ fontWeight: 600, fontSize: "15px", color: tc, letterSpacing: "-0.01em" }}>
-                  {pick.ml_lean === "HOME" ? pick.home_team_abbr : pick.away_team_abbr} ML
+                  {pick.ml_lean === "HOME" ? pick.home_team_abbr : pick.away_team_abbr} to win
                 </div>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-2)", marginTop: "3px" }}>
-                  {Math.round(pick.ml_confidence * 100)}% conf · {pick.ml_american_odds > 0 ? "+" : ""}{pick.ml_american_odds}
+                <div style={{ fontSize: "11px", color: "var(--text-2)", marginTop: "5px", lineHeight: 1.6 }}>
+                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
+                    {pick.ml_american_odds > 0 ? "+" : ""}{pick.ml_american_odds}
+                  </span>
+                  {" "}· Book says{" "}
+                  <span style={{ fontFamily: "var(--font-mono)" }}>{Math.round(pick.implied_prob * 100)}%</span>
+                  {" "}chance to win
                 </div>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--green)", marginTop: "2px" }}>
-                  +{((pick.ml_confidence - pick.implied_prob) * 100).toFixed(1)}% edge · {(pick.ml_kelly_fraction * 100).toFixed(1)}% Kelly
+                <div style={{ fontSize: "11px", color: "var(--text-2)", lineHeight: 1.6 }}>
+                  Model says{" "}
+                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600, color: tc }}>
+                    {Math.round(pick.ml_confidence * 100)}%
+                  </span>
+                  {" "}chance to win
+                </div>
+                <div style={{ fontSize: "11px", color: "var(--green)", lineHeight: 1.6 }}>
+                  Edge:{" "}
+                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
+                    +{((pick.ml_confidence - pick.implied_prob) * 100).toFixed(1)}%
+                  </span>
+                  {" "}over book
+                </div>
+                <div style={{ fontSize: "10px", color: "var(--text-3)", lineHeight: 1.5, marginTop: "4px" }}>
+                  Kelly:{" "}
+                  <span style={{ fontFamily: "var(--font-mono)" }}>{(pick.ml_kelly_fraction * 100).toFixed(1)}%</span>
+                  {" "}of bankroll — bet size from Kelly formula, capped at 25%
                 </div>
               </div>
             ) : (

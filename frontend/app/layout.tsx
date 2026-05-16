@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
 
+const FONTS_URL = "https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500&family=JetBrains+Mono:wght@400;500;600&display=swap";
+
 export const metadata: Metadata = {
   title: "Diamond Mind",
   description: "MLB Intelligence System",
@@ -10,6 +12,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href={FONTS_URL} rel="stylesheet" />
+      </head>
       <body>
         <nav style={{
           borderBottom: "1px solid var(--border)",

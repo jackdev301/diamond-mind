@@ -1267,6 +1267,40 @@ def quant_verify(
     return {**dataclasses.asdict(qe), "recommendation": rec}
 
 
+@app.get("/nba/analyze", tags=["analysis"])
+def nba_analyze(
+    home_team: str = Query(...),
+    away_team: str = Query(...),
+    home_net_rating: float = Query(..., description="off_rtg - def_rtg, home"),
+    away_net_rating: float = Query(..., description="off_rtg - def_rtg, away"),
+    home_ml_odds: Optional[int] = Query(None),
+    away_ml_odds: Optional[int] = Query(None),
+    home_rest_days: Optional[int] = Query(None),
+    away_rest_days: Optional[int] = Query(None),
+    home_back_to_back: bool = Query(False),
+    away_back_to_back: bool = Query(False),
+    evidence_quality: float = Query(0.6, ge=0.0, le=1.0),
+):
+    """NBA moneyline — quant core ported to basketball.
+
+    On-demand over explicit inputs (no NBA ingestion in this repo; no
+    fabricated team data). Routes through the same Shin/Bayesian/Kelly
+    pipeline as the MLB models.
+    """
+    import dataclasses
+    from app.betting.nba_model import analyze_nba_game
+
+    result = analyze_nba_game(
+        home_team=home_team, away_team=away_team,
+        home_net_rating=home_net_rating, away_net_rating=away_net_rating,
+        home_ml_odds=home_ml_odds, away_ml_odds=away_ml_odds,
+        home_rest_days=home_rest_days, away_rest_days=away_rest_days,
+        home_back_to_back=home_back_to_back, away_back_to_back=away_back_to_back,
+        evidence_quality=evidence_quality,
+    )
+    return dataclasses.asdict(result)
+
+
 @app.get("/games/picks", tags=["analysis"])
 def daily_picks(
     game_date: date = Query(..., description="YYYY-MM-DD"),

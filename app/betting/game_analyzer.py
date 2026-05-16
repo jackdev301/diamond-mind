@@ -435,7 +435,12 @@ def analyze_game(
     comp_trend = trend_adj
     if abs(trend_adj) >= 0.02:
         side = "HOME" if trend_adj > 0 else "AWAY"
-        factors.append(f"{side} team trending better recently")
+        home_label = home_form.trend_label.value if home_form and hasattr(home_form.trend_label, "value") else str(getattr(home_form, "trend_label", "?"))
+        away_label = away_form.trend_label.value if away_form and hasattr(away_form.trend_label, "value") else str(getattr(away_form, "trend_label", "?"))
+        factors.append(
+            f"{side} form edge: HOME {home_label.replace('_', ' ')} vs AWAY {away_label.replace('_', ' ')}"
+            f" → +{abs(trend_adj) * 100:.1f}% win prob shift"
+        )
 
     # 6. Home/road split — how each team performs in their specific context
     if home_home_record and home_home_record[1] >= 10:
@@ -446,9 +451,15 @@ def analyze_game(
         prob += split_adj
         comp_trend += split_adj
         if split_adj >= 0.025:
-            factors.append(f"HOME team elite at home: {h_wins}-{h_games - h_wins} home record")
+            factors.append(
+                f"HOME elite at home: {h_wins}-{h_games - h_wins} ({home_win_rate:.1%} win rate)"
+                f" vs 53.5% expected → +{split_adj * 100:.1f}% adjustment"
+            )
         elif split_adj <= -0.025:
-            cautions.append(f"⚠ HOME team struggles at home: {h_wins}-{h_games - h_wins} home record")
+            cautions.append(
+                f"⚠ HOME struggles at home: {h_wins}-{h_games - h_wins} ({home_win_rate:.1%} win rate)"
+                f" vs 53.5% expected → {split_adj * 100:.1f}% adjustment"
+            )
 
     if away_road_record and away_road_record[1] >= 10:
         a_wins, a_games = away_road_record
@@ -458,9 +469,15 @@ def analyze_game(
         prob -= road_adj   # positive road_adj means away team is strong on road → hurt home prob
         comp_trend -= road_adj
         if road_adj >= 0.025:
-            cautions.append(f"⚠ AWAY team strong on road: {a_wins}-{a_games - a_wins} road record")
+            cautions.append(
+                f"⚠ AWAY strong on road: {a_wins}-{a_games - a_wins} ({road_win_rate:.1%})"
+                f" vs 46.5% expected → counter-acts home edge by {road_adj * 100:.1f}%"
+            )
         elif road_adj <= -0.025:
-            factors.append(f"AWAY team poor on road: {a_wins}-{a_games - a_wins} road record")
+            factors.append(
+                f"AWAY poor on road: {a_wins}-{a_games - a_wins} ({road_win_rate:.1%})"
+                f" vs 46.5% expected → +{abs(road_adj) * 100:.1f}% for HOME"
+            )
 
     # 7. Head-to-head season record
     if home_h2h and home_h2h[1] >= 4:

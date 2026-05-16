@@ -146,6 +146,20 @@ function StarterCard({ abbr, starter }: { abbr: string; starter: NonNullable<Gam
   );
 }
 
+function degreesToCompass(deg: number): string {
+  const dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+  return dirs[Math.round(deg / 22.5) % 16];
+}
+
+function windEffect(speedMph: number, deg: number): string {
+  if (speedMph < 6) return "calm — minimal effect on ball flight";
+  const dir = deg;
+  // "out to CF" range roughly 30°–120° from home plate perspective
+  if (dir >= 30 && dir <= 120) return `blowing out to CF — favors hitters, Over lean`;
+  if (dir >= 210 && dir <= 300) return `blowing in from CF — suppresses power, Under lean`;
+  return `crosswind — limited scoring effect`;
+}
+
 function WeatherCard({ w }: { w: WeatherData }) {
   if (w.is_dome) return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "6px", padding: "16px" }}>
@@ -153,12 +167,26 @@ function WeatherCard({ w }: { w: WeatherData }) {
       <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-2)" }}>Indoor venue — weather not a factor.</div>
     </div>
   );
+  const tempNote = w.temperature_f != null
+    ? w.temperature_f >= 85 ? " (hot — hitter-friendly)" : w.temperature_f <= 50 ? " (cold — pitcher-friendly)" : ""
+    : "";
+  const windNote = w.wind_speed_mph != null && w.wind_direction_deg != null && w.wind_speed_mph >= 6
+    ? windEffect(w.wind_speed_mph, w.wind_direction_deg) : null;
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "6px", padding: "16px" }}>
       <Label>Conditions</Label>
-      <StatRow label="Temperature" value={w.temperature_f != null ? `${w.temperature_f}°F` : null} />
-      <StatRow label="Wind" value={w.wind_speed_mph != null ? `${w.wind_speed_mph} mph @ ${w.wind_direction_deg}°` : null} />
-      <StatRow label="Precip Chance" value={w.precipitation_chance != null ? `${w.precipitation_chance}%` : null} />
+      <StatRow
+        label={`Temperature${tempNote}`}
+        value={w.temperature_f != null ? `${w.temperature_f}°F` : null}
+      />
+      {w.wind_speed_mph != null && (
+        <StatRow
+          label={`Wind — ${w.wind_speed_mph} mph from ${w.wind_direction_deg != null ? degreesToCompass(w.wind_direction_deg) : "?"}`}
+          value={windNote ?? "calm"}
+          mono={false}
+        />
+      )}
+      <StatRow label="Precipitation chance" value={w.precipitation_chance != null ? `${w.precipitation_chance}%` : null} />
     </div>
   );
 }
@@ -230,6 +258,9 @@ function TeamStatsCard({ homeAbbr, awayAbbr, homeForm, awayForm, homeBatting, aw
       )}
       {(homeBatting?.walk_rate != null || awayBatting?.walk_rate != null) && (
         <CompareRow label="BB% — Walk rate (lg avg 8.5%; higher = more patient at plate)" home={homeBatting?.walk_rate ?? null} away={awayBatting?.walk_rate ?? null} fmt={v => `${(v * 100).toFixed(1)}%`} />
+      )}
+      {(homeBatting?.stolen_base_success_rate != null || awayBatting?.stolen_base_success_rate != null) && (
+        <CompareRow label="SB% — Stolen base success rate (break-even 72.7%; elite ≥80%)" home={homeBatting?.stolen_base_success_rate ?? null} away={awayBatting?.stolen_base_success_rate ?? null} fmt={v => `${(v * 100).toFixed(0)}%`} />
       )}
       <CompareRow label="W — Wins (last 10 games)" home={hf?.record_wins} away={af?.record_wins} fmt={v => String(Math.round(v))} />
       <CompareRow label="L — Losses (last 10 games)" home={hf?.record_losses} away={af?.record_losses} higherBetter={false} fmt={v => String(Math.round(v))} />

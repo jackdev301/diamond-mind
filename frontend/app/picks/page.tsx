@@ -96,7 +96,10 @@ function PickCard({ pick, index }: { pick: GameAnalysis; index: number }) {
                   {pick.ml_lean === "HOME" ? pick.home_team_abbr : pick.away_team_abbr} ML
                 </div>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-2)", marginTop: "2px" }}>
-                  {Math.round(pick.ml_confidence * 100)}% conf · Kelly {(pick.ml_kelly_fraction * 100).toFixed(1)}%
+                  {Math.round(pick.ml_confidence * 100)}% · {pick.ml_american_odds > 0 ? "+" : ""}{pick.ml_american_odds}
+                </div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--amber)", marginTop: "1px" }}>
+                  Edge +{((pick.ml_confidence - pick.implied_prob) * 100).toFixed(1)}% · Kelly {(pick.ml_kelly_fraction * 100).toFixed(1)}%
                 </div>
               </>
             ) : (

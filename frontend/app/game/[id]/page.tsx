@@ -236,7 +236,12 @@ function AnalysisPanel({ a }: { a: GameAnalysis }) {
             </div>
             {isActionable && (
               <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-2)", marginTop: "2px" }}>
-                {Math.round(a.ml_confidence * 100)}% · Kelly {(a.ml_kelly_fraction * 100).toFixed(1)}%
+                {Math.round(a.ml_confidence * 100)}% model · {Math.round(a.implied_prob * 100)}% implied
+              </div>
+            )}
+            {isActionable && (
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--amber)", marginTop: "1px" }}>
+                Edge {((a.ml_confidence - a.implied_prob) * 100).toFixed(1)}% · Kelly {(a.ml_kelly_fraction * 100).toFixed(1)}%
               </div>
             )}
           </div>

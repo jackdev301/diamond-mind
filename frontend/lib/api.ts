@@ -73,9 +73,19 @@ export type GameBundle = {
   away_bullpen: BullpenData | null;
 };
 
+export type WeatherData = {
+  temperature_f: number | null;
+  wind_speed_mph: number | null;
+  wind_direction_deg: number | null;
+  precipitation_chance: number | null;
+  is_dome: boolean;
+};
+
 export const api = {
   games: (date: string) => get<Game[]>(`/games?date=${date}`),
   bundle: (gameId: number) => get<GameBundle>(`/games/${gameId}/bundle`),
+  weather: (gameId: number) => get<WeatherData>(`/games/${gameId}/weather`),
+  odds: (gameId: number) => get<unknown[]>(`/games/${gameId}/odds`),
   bullpen: (teamId: number, date: string) =>
     get<BullpenData>(`/teams/${teamId}/bullpen?date=${date}`),
   pitcher: (id: number) => get<PitcherForm>(`/pitchers/${id}/form`),

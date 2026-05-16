@@ -147,13 +147,20 @@ export default function PicksPage() {
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    setPicks(null);
-    setError(false);
+    let alive = true;
     api.picks(date).then((p) => {
+      if (!alive) return;
       if (p === null) setError(true);
       else setPicks(p);
     });
+    return () => { alive = false; };
   }, [date]);
+
+  function changeDate(d: string) {
+    setPicks(null);
+    setError(false);
+    setDate(d);
+  }
 
   const actionable = picks?.filter((p) => p.ml_tier === "STRONG LEAN" || p.ml_tier === "LEAN") ?? [];
   const rest = picks?.filter((p) => p.ml_tier !== "STRONG LEAN" && p.ml_tier !== "LEAN") ?? [];
@@ -172,7 +179,7 @@ export default function PicksPage() {
         <input
           type="date"
           value={date}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={(e) => changeDate(e.target.value)}
           style={{ background: "var(--surface)", border: "1px solid var(--border-2)", borderRadius: "4px", padding: "6px 10px", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: "12px" }}
         />
       </div>

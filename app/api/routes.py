@@ -757,6 +757,43 @@ def _build_analysis(game_id: int, as_of: date, db: Session):
     home_home_record = _split_record(home_id, True)   # home team's home record
     away_road_record = _split_record(away_id, False)   # away team's road record
 
+    # Pitcher BABIP from last 5 starts — high BABIP = getting unlucky (positive regression)
+    def _sp_babip(pitcher_id: Optional[int]) -> Optional[float]:
+        if pitcher_id is None:
+            return None
+        rows = _pitcher_rows_for_window(db, pitcher_id=pitcher_id, window=WindowKey.LAST_5_STARTS, as_of=as_of)
+        if not rows or sum(r.innings_pitched for r in rows) < 10:
+            return None
+        hits = sum(r.hits_allowed for r in rows)
+        hr = sum(r.home_runs_allowed for r in rows)
+        bf = sum(r.batters_faced for r in rows)
+        k = sum(r.strikeouts for r in rows)
+        bb = sum(r.walks for r in rows)
+        bip = bf - k - bb - hr
+        return _safe_rate(hits - hr, bip)
+
+    home_sp_babip = _sp_babip(game.home_probable_starter_id)
+    away_sp_babip = _sp_babip(game.away_probable_starter_id)
+
+    # Team stolen base rate this season (speed/pressure signal)
+    def _sb_rate(team_id: int) -> Optional[float]:
+        season_start = date(as_of.year, 1, 1)
+        rows = db.execute(
+            select(PlayerGameLog).where(
+                PlayerGameLog.team_id == team_id,
+                PlayerGameLog.game_date >= season_start,
+                PlayerGameLog.game_date <= as_of,
+            )
+        ).scalars().all()
+        if not rows:
+            return None
+        sb = sum(r.stolen_bases for r in rows)
+        pa = sum(r.plate_appearances for r in rows)
+        return _safe_rate(sb, pa)
+
+    home_sb_rate = _sb_rate(home_id)
+    away_sb_rate = _sb_rate(away_id)
+
     # Pitcher last-start pitch count (within 7 days)
     def _last_pitch_count(pitcher_id: Optional[int]) -> Optional[int]:
         if pitcher_id is None:
@@ -860,6 +897,10 @@ def _build_analysis(game_id: int, as_of: date, db: Session):
         away_road_record=away_road_record,
         home_sp_last_pitch_count=_last_pitch_count(game.home_probable_starter_id),
         away_sp_last_pitch_count=_last_pitch_count(game.away_probable_starter_id),
+        home_sp_babip=home_sp_babip,
+        away_sp_babip=away_sp_babip,
+        home_sb_rate=home_sb_rate,
+        away_sb_rate=away_sb_rate,
     )
 
 

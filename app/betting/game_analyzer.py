@@ -301,6 +301,10 @@ def analyze_game(
     away_road_record: Optional[tuple] = None,   # (wins, road_games) this season
     home_sp_last_pitch_count: Optional[int] = None,
     away_sp_last_pitch_count: Optional[int] = None,
+    home_sp_babip: Optional[float] = None,
+    away_sp_babip: Optional[float] = None,
+    home_sb_rate: Optional[float] = None,   # SB/PA this season
+    away_sb_rate: Optional[float] = None,
 ) -> GameAnalysis:
 
     factors: list[str] = []
@@ -509,6 +513,40 @@ def analyze_game(
             adj = -0.008 if side_label == "HOME" else +0.008
             prob += adj
             comp_off += adj
+
+    # BABIP regression signal — high BABIP pitchers are getting unlucky (buy low)
+    BABIP_HIGH = 0.340   # above this → positive regression candidate
+    BABIP_LOW  = 0.255   # below this → likely getting lucky (negative)
+    for babip, sp, side_label in [
+        (home_sp_babip, home_sp, "HOME"),
+        (away_sp_babip, away_sp, "AWAY"),
+    ]:
+        if babip is None or sp is None or sp.insufficient_sample:
+            continue
+        if babip >= BABIP_HIGH:
+            adj = 0.015 if side_label == "HOME" else -0.015
+            prob += adj
+            comp_fip += adj
+            factors.append(
+                f"{side_label} SP BABIP {babip:.3f} — balls in play hurting results, positive regression likely"
+            )
+        elif babip <= BABIP_LOW:
+            adj = -0.015 if side_label == "HOME" else 0.015
+            prob += adj
+            comp_fip += adj
+            cautions.append(
+                f"⚠ {side_label} SP BABIP {babip:.3f} — may be running lucky, regression risk"
+            )
+
+    # Speed / pressure signal — high SB rate teams create more chaos on bases
+    SB_RATE_HIGH = 0.025   # ~1 SB per 40 PA is elite
+    for sb_rate, side_label in [(home_sb_rate, "HOME"), (away_sb_rate, "AWAY")]:
+        if sb_rate is None or sb_rate < SB_RATE_HIGH:
+            continue
+        adj = 0.008 if side_label == "HOME" else -0.008
+        prob += adj
+        comp_off += adj
+        factors.append(f"{side_label} lineup speed threat: {sb_rate:.3f} SB/PA — baserunning pressure")
 
     # Clamp
     prob = round(min(0.72, max(0.30, prob)), 4)

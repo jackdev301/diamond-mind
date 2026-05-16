@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { api, type GameBundle } from "@/lib/api";
+import { api, type GameBundle, type WeatherData } from "@/lib/api";
 
 function StatRow({ label, value }: { label: string; value: string | number | null }) {
   return (
@@ -37,13 +37,34 @@ function BullpenCard({ abbr, bp }: { abbr: string; bp: NonNullable<GameBundle["h
   );
 }
 
+function WeatherCard({ w }: { w: WeatherData }) {
+  if (w.is_dome) return (
+    <div className="border border-gray-800 rounded-lg p-4">
+      <h3 className="font-bold mb-2">Weather</h3>
+      <p className="text-gray-400 text-sm">Indoor venue — weather not a factor.</p>
+    </div>
+  );
+  const dir = w.wind_direction_deg != null ? `${w.wind_direction_deg}°` : "—";
+  return (
+    <div className="border border-gray-800 rounded-lg p-4">
+      <h3 className="font-bold mb-3">Weather</h3>
+      <StatRow label="Temperature" value={w.temperature_f != null ? `${w.temperature_f}°F` : null} />
+      <StatRow label="Wind" value={w.wind_speed_mph != null ? `${w.wind_speed_mph} mph @ ${dir}` : null} />
+      <StatRow label="Precip Chance" value={w.precipitation_chance != null ? `${w.precipitation_chance}%` : null} />
+    </div>
+  );
+}
+
 export default function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [bundle, setBundle] = useState<GameBundle | null>(null);
+  const [weather, setWeather] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.bundle(Number(id)).then((b) => { setBundle(b); setLoading(false); });
+    const gameId = Number(id);
+    api.bundle(gameId).then((b) => { setBundle(b); setLoading(false); });
+    api.weather(gameId).then((w) => setWeather(w));
   }, [id]);
 
   if (loading) return <p className="text-gray-500">Loading...</p>;
@@ -86,10 +107,18 @@ export default function GameDetailPage() {
 
       {/* Bullpens */}
       <h2 className="text-lg font-semibold mb-3">Bullpen Intelligence</h2>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-4 mb-8">
         {bundle.home_bullpen && <BullpenCard abbr={bundle.home_team_abbr} bp={bundle.home_bullpen} />}
         {bundle.away_bullpen && <BullpenCard abbr={bundle.away_team_abbr} bp={bundle.away_bullpen} />}
       </div>
+
+      {/* Weather */}
+      {weather && (
+        <>
+          <h2 className="text-lg font-semibold mb-3">Conditions</h2>
+          <WeatherCard w={weather} />
+        </>
+      )}
     </div>
   );
 }

@@ -28,10 +28,12 @@ from sqlalchemy import Integer, and_, func, select
 from sqlalchemy.orm import Session
 
 from app.contracts import (
+    BullpenState,
     PitcherFormWindow,
     PlayerFormWindow,
     RelieverFormWindow,
     RelieverRole,
+    RelieverUsage,
     TeamFormWindow,
     TrendLabel,
     WindowKey,
@@ -645,6 +647,132 @@ def build_reliever_form_window(
         trend_label=trend,
         as_of_date=as_of_date,
         insufficient_sample=apps < MIN_SAMPLE[window],
+    )
+
+
+def build_bullpen_state(
+    session: Session,
+    *,
+    team_id: int,
+    as_of_date: date,
+) -> Optional[BullpenState]:
+    """Build a BullpenState from PitcherGameLog rows for the 5 days prior to as_of_date.
+
+    back_to_back_relievers and three_in_four_relievers are List[int] pitcher_ids
+    so the fatigue scorer can consume them directly without name lookups.
+    """
+    from datetime import timedelta
+
+    team = session.get(Team, team_id)
+    if team is None:
+        return None
+
+    yesterday = as_of_date - timedelta(days=1)
+    four_days_ago = as_of_date - timedelta(days=4)
+    five_days_ago = as_of_date - timedelta(days=5)
+
+    # All reliever appearances in the last 5 days, newest first.
+    stmt = (
+        select(PitcherGameLog, Player)
+        .join(Player, PitcherGameLog.pitcher_id == Player.id)
+        .where(
+            and_(
+                PitcherGameLog.team_id == team_id,
+                PitcherGameLog.started.is_(False),
+                PitcherGameLog.game_date >= five_days_ago,
+                PitcherGameLog.game_date < as_of_date,
+            )
+        )
+        .order_by(PitcherGameLog.game_date.desc())
+    )
+    rows = session.execute(stmt).all()
+
+    # Group appearances by date and by pitcher.
+    by_date: dict[date, list[PitcherGameLog]] = {}
+    by_pitcher: dict[int, list[date]] = {}
+    pitcher_names: dict[int, str] = {}
+    pitcher_roles: dict[int, str] = {}
+
+    for log, player in rows:
+        by_date.setdefault(log.game_date, []).append(log)
+        by_pitcher.setdefault(log.pitcher_id, []).append(log.game_date)
+        pitcher_names[log.pitcher_id] = player.full_name
+        # Prefer the most specific role stored on the log; default to "middle".
+        if log.pitcher_id not in pitcher_roles or log.game_date == yesterday:
+            pitcher_roles[log.pitcher_id] = log.role if log.role not in ("starter", "reliever") else "middle"
+
+    yesterday_logs = by_date.get(yesterday, [])
+
+    # Yesterday totals.
+    yesterday_total_innings = sum(lg.innings_pitched for lg in yesterday_logs)
+    yesterday_total_pitches = sum(lg.pitches for lg in yesterday_logs)
+    yesterday_relievers_used = len({lg.pitcher_id for lg in yesterday_logs})
+
+    # closer / high-leverage yesterday (by pitcher_id).
+    closer_ids = {
+        lg.pitcher_id for lg in yesterday_logs
+        if pitcher_roles.get(lg.pitcher_id) == "closer"
+    }
+    closer_pitched_yesterday = bool(closer_ids)
+
+    high_leverage_pitched_yesterday = [
+        lg.pitcher_id for lg in yesterday_logs
+        if pitcher_roles.get(lg.pitcher_id) in ("closer", "high_leverage")
+    ]
+
+    # back-to-back: appeared yesterday AND day before.
+    two_days_ago = as_of_date - timedelta(days=2)
+    appeared_yesterday = {lg.pitcher_id for lg in yesterday_logs}
+    appeared_day_before = {lg.pitcher_id for lg in by_date.get(two_days_ago, [])}
+    back_to_back_relievers = sorted(appeared_yesterday & appeared_day_before)
+
+    # three_in_four: appeared on 3+ of the 4 days ending yesterday.
+    three_in_four_relievers = []
+    for pid, dates in by_pitcher.items():
+        recent_four = {d for d in dates if four_days_ago <= d <= yesterday}
+        if len(recent_four) >= 3:
+            three_in_four_relievers.append(pid)
+    three_in_four_relievers.sort()
+
+    # recent_usage: one RelieverUsage per (pitcher, game_date), newest first.
+    recent_usage = [
+        RelieverUsage(
+            pitcher_id=log.pitcher_id,
+            pitcher_name=pitcher_names.get(log.pitcher_id, ""),
+            team_id=team_id,
+            role=pitcher_roles.get(log.pitcher_id, "middle"),
+            game_date=log.game_date,
+            pitches=log.pitches,
+            innings=log.innings_pitched,
+            appeared=True,
+        )
+        for log, _ in sorted(rows, key=lambda r: r[0].game_date, reverse=True)
+    ]
+
+    # Build RelieverFormWindow for each reliever who appeared in the window.
+    reliever_windows: list[RelieverFormWindow] = []
+    for pid in by_pitcher:
+        role: RelieverRole = pitcher_roles.get(pid, "middle")  # type: ignore[assignment]
+        w = build_reliever_form_window(
+            session, pitcher_id=pid, role=role,
+            window=WindowKey.L20, as_of_date=as_of_date,
+        )
+        if w is not None:
+            reliever_windows.append(w)
+
+    return BullpenState(
+        team_id=team_id,
+        team_abbr=team.abbr,
+        as_of_date=as_of_date,
+        yesterday_total_innings=round(yesterday_total_innings, 1),
+        yesterday_total_pitches=yesterday_total_pitches,
+        yesterday_relievers_used=yesterday_relievers_used,
+        closer_pitched_yesterday=closer_pitched_yesterday,
+        high_leverage_pitched_yesterday=high_leverage_pitched_yesterday,
+        back_to_back_relievers=back_to_back_relievers,
+        three_in_four_relievers=three_in_four_relievers,
+        relievers=reliever_windows,
+        recent_usage=recent_usage,
     )
 
 

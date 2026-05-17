@@ -40,6 +40,14 @@ from app.models.entities import Player, Team
 from app.models.games import Game, PitcherGameLog, PlayerGameLog, TeamGameLog
 from app.models.tracker import BetRecord, compute_units_returned
 
+# Import all models so Base.metadata knows about every table, then create
+# any that don't exist yet (safe on both SQLite and Postgres — additive only).
+import app.models.players  # noqa: F401
+import app.models.bullpen  # noqa: F401
+import app.models.odds     # noqa: F401
+import app.models.reports  # noqa: F401
+Base.metadata.create_all(engine)
+
 app = FastAPI(
     title="Diamond Mind API",
     description=(
@@ -1472,8 +1480,7 @@ def polish_report_endpoint(body: dict):
 # Tracker — picks performance log
 # ---------------------------------------------------------------------------
 
-# Ensure the bet_records table exists (additive, never destructive).
-Base.metadata.create_all(engine, tables=[BetRecord.__table__])
+# Tables are created at module load above (Base.metadata.create_all).
 
 
 class _BetCreate(dict):

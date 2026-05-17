@@ -216,8 +216,13 @@ def _date_range(start: date, end: date):
         d += timedelta(days=1)
 
 
-def _ingest_completed_games(session, client: MLBStatsClient, game_date: date) -> int:
-    pks = ingest_schedule(session, client, game_date)
+def _ingest_completed_games(
+    session,
+    client: MLBStatsClient,
+    game_date: date,
+    game_type: str | None = "R",
+) -> int:
+    pks = ingest_schedule(session, client, game_date, game_type=game_type)
     session.flush()
 
     completed = session.execute(
@@ -302,7 +307,7 @@ def run(as_of: date, dry_run: bool = False, history_days: int = DEFAULT_HISTORY_
             log.info("Rosters seeded for %d teams.", len(team_ids_for_roster))
 
             # 1. Fetch today's schedule so probable pitchers are populated.
-            today_pks = ingest_schedule(session, client, as_of)
+            today_pks = ingest_schedule(session, client, as_of, game_type="R")
             log.info("Fetched %d games for %s", len(today_pks), as_of)
 
             # 1b. Map Odds API event_ids to today's games (requires key).

@@ -54,12 +54,17 @@ class MLBStatsClient:
 
     # -- schedule -----------------------------------------------------------
 
-    def fetch_schedule(self, game_date: date) -> dict:
+    def fetch_schedule(self, game_date: date, game_type: str | None = None) -> dict:
+        params: dict[str, Any] = {
+            "sportId": SPORT_ID,
+            "date": game_date.isoformat(),
+            "hydrate": "probablePitcher,venue,team",
+        }
+        if game_type:
+            params["gameTypes"] = game_type
         return self._get(
             "/schedule",
-            sportId=SPORT_ID,
-            date=game_date.isoformat(),
-            hydrate="probablePitcher,venue,team",
+            **params,
         )
 
     # -- teams --------------------------------------------------------------
@@ -99,7 +104,9 @@ class _ScheduledGame:
     double_header: str   # "N", "Y", "S"
     game_number: int
     home_probable_pitcher_id: Optional[int]
+    home_probable_pitcher_name: Optional[str]
     away_probable_pitcher_id: Optional[int]
+    away_probable_pitcher_name: Optional[str]
 
 
 def parse_schedule(payload: dict) -> list[_ScheduledGame]:
@@ -111,9 +118,13 @@ def parse_schedule(payload: dict) -> list[_ScheduledGame]:
             home = teams.get("home", {})
             away = teams.get("away", {})
 
-            def _probable(side: dict) -> Optional[int]:
+            def _probable_id(side: dict) -> Optional[int]:
                 pp = side.get("probablePitcher") or {}
                 return pp.get("id")
+
+            def _probable_name(side: dict) -> Optional[str]:
+                pp = side.get("probablePitcher") or {}
+                return pp.get("fullName")
 
             games.append(_ScheduledGame(
                 game_pk=g["gamePk"],
@@ -124,8 +135,10 @@ def parse_schedule(payload: dict) -> list[_ScheduledGame]:
                 venue_name=g.get("venue", {}).get("name", ""),
                 double_header=g.get("doubleHeader", "N"),
                 game_number=g.get("gameNumber", 1),
-                home_probable_pitcher_id=_probable(home),
-                away_probable_pitcher_id=_probable(away),
+                home_probable_pitcher_id=_probable_id(home),
+                home_probable_pitcher_name=_probable_name(home),
+                away_probable_pitcher_id=_probable_id(away),
+                away_probable_pitcher_name=_probable_name(away),
             ))
     return games
 
@@ -362,7 +375,46 @@ def upsert_player(session: Session, data: dict) -> None:
         session.add(Player(**{k: v for k, v in data.items() if v is not None or k == "id"}))
 
 
+def _ensure_probable_pitcher(
+    session: Session,
+    pitcher_id: Optional[int],
+    full_name: Optional[str],
+    team_id: int,
+) -> None:
+    """Ensure games can safely FK to announced probable pitchers."""
+    if not pitcher_id:
+        return
+    fallback_name = f"Player {pitcher_id}"
+    existing = session.get(Player, pitcher_id)
+    if existing:
+        if full_name and (not existing.full_name or existing.full_name == fallback_name):
+            existing.full_name = full_name
+        if not existing.primary_position:
+            existing.primary_position = "P"
+        if existing.current_team_id is None and team_id:
+            existing.current_team_id = team_id
+        return
+    session.add(Player(
+        id=pitcher_id,
+        full_name=full_name or fallback_name,
+        primary_position="P",
+        current_team_id=team_id or None,
+    ))
+
+
 def upsert_game(session: Session, g: _ScheduledGame) -> Game:
+    _ensure_probable_pitcher(
+        session,
+        g.home_probable_pitcher_id,
+        g.home_probable_pitcher_name,
+        g.home_team_id,
+    )
+    _ensure_probable_pitcher(
+        session,
+        g.away_probable_pitcher_id,
+        g.away_probable_pitcher_name,
+        g.away_team_id,
+    )
     existing = session.get(Game, g.game_pk)
     if existing:
         existing.status = g.status
@@ -521,9 +573,10 @@ def ingest_schedule(
     session: Session,
     client: MLBStatsClient,
     game_date: date,
+    game_type: str | None = None,
 ) -> list[int]:
     """Upsert games for a date; return list of game_pks."""
-    payload = client.fetch_schedule(game_date)
+    payload = client.fetch_schedule(game_date, game_type=game_type)
     scheduled = parse_schedule(payload)
     pks = []
     for g in scheduled:

@@ -55,6 +55,7 @@ def backfill(
     end: date,
     recompute_form: bool = False,
     pause: float = _DATE_PAUSE,
+    game_type: str | None = "R",
 ) -> None:
     log.info("Backfill %s → %s (%d days)", start, end, (end - start).days + 1)
 
@@ -62,7 +63,7 @@ def backfill(
         with SessionLocal() as session:
             for game_date in _date_range(start, end):
                 try:
-                    pks = ingest_schedule(session, client, game_date)
+                    pks = ingest_schedule(session, client, game_date, game_type=game_type)
                     session.flush()
 
                     # Only ingest box scores for Final games on this date.
@@ -118,6 +119,11 @@ def main() -> None:
         "--pause", type=float, default=_DATE_PAUSE,
         help="Seconds to sleep between dates (default 0.5).",
     )
+    parser.add_argument(
+        "--game-type",
+        default="R",
+        help="MLB Stats API gameTypes filter (default R for regular season).",
+    )
     args = parser.parse_args()
 
     yesterday = date.today() - timedelta(days=1)
@@ -140,7 +146,7 @@ def main() -> None:
         print(f"--start {start} is after --end {end}", file=sys.stderr)
         sys.exit(1)
 
-    backfill(start, end, recompute_form=args.recompute_form, pause=args.pause)
+    backfill(start, end, recompute_form=args.recompute_form, pause=args.pause, game_type=args.game_type or None)
 
 
 if __name__ == "__main__":

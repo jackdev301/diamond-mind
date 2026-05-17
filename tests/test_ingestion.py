@@ -53,11 +53,11 @@ SCHEDULE_PAYLOAD = {
                 "teams": {
                     "home": {
                         "team": {"id": 143},
-                        "probablePitcher": {"id": 554430},
+                        "probablePitcher": {"id": 554430, "fullName": "Zack Wheeler"},
                     },
                     "away": {
                         "team": {"id": 121},
-                        "probablePitcher": {"id": 592789},
+                        "probablePitcher": {"id": 592789, "fullName": "Sean Manaea"},
                     },
                 },
             },
@@ -215,7 +215,9 @@ def test_parse_schedule():
     assert g.home_team_id == 143
     assert g.away_team_id == 121
     assert g.home_probable_pitcher_id == 554430
+    assert g.home_probable_pitcher_name == "Zack Wheeler"
     assert g.away_probable_pitcher_id == 592789
+    assert g.away_probable_pitcher_name == "Sean Manaea"
     assert g.double_header == "N"
 
 
@@ -317,7 +319,8 @@ def test_ingest_schedule(db):
     db.flush()
 
     class _FakeClient:
-        def fetch_schedule(self, d):
+        def fetch_schedule(self, d, game_type=None):
+            assert game_type is None
             return SCHEDULE_PAYLOAD
 
     pks = ingest_schedule(db, _FakeClient(), date(2026, 5, 15))
@@ -325,6 +328,25 @@ def test_ingest_schedule(db):
     g = db.get(Game, 778001)
     assert g.home_team_id == 143
     assert g.home_probable_starter_id == 554430
+    assert db.get(Player, 554430).full_name == "Zack Wheeler"
+    assert db.get(Player, 554430).primary_position == "P"
+
+
+def test_ingest_schedule_passes_game_type(db):
+    db.add(Team(id=143, abbr="PHI", name="Phillies"))
+    db.add(Team(id=121, abbr="NYM", name="Mets"))
+    db.flush()
+
+    class _FakeClient:
+        seen_game_type = None
+
+        def fetch_schedule(self, d, game_type=None):
+            self.seen_game_type = game_type
+            return SCHEDULE_PAYLOAD
+
+    client = _FakeClient()
+    ingest_schedule(db, client, date(2026, 5, 15), game_type="R")
+    assert client.seen_game_type == "R"
 
 
 def test_ingest_boxscore(db):

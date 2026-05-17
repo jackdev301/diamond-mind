@@ -1701,8 +1701,9 @@ def auto_track(
                 )
             ).scalar_one_or_none()
             if existing is None:
+                # ml_lean is "HOME" or "AWAY" (not team abbr)
                 lean = analysis.get("ml_lean", "")
-                if lean == home_abbr:
+                if lean == "HOME" or lean == home_abbr:
                     selection = home_abbr
                     odds = analysis.get("ml_american_odds", 0)
                 else:

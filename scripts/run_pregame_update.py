@@ -236,7 +236,7 @@ def _auto_track_picks(session, as_of: date) -> None:
     url = f"http://localhost:{port}/tracker/auto-track?game_date={as_of.isoformat()}"
     try:
         resp = _httpx.post(url, timeout=60)
-        if resp.ok:
+        if resp.is_success:
             data = resp.json()
             log.info(
                 "Auto-track: +%d new picks logged, %d already tracked.",

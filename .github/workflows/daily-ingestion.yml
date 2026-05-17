@@ -26,6 +26,13 @@ jobs:
             echo "game_date=$(TZ=America/New_York date +%Y-%m-%d)" >> $GITHUB_OUTPUT
           fi
 
+      - name: Deploy latest code to Render
+        run: |
+          echo "Triggering Render deploy…"
+          DEPLOY_ID=$(curl -s "${{ secrets.RENDER_DEPLOY_HOOK }}" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['deploy']['id'])")
+          echo "Deploy ID: $DEPLOY_ID"
+
       - name: Wake up Render (cold start can take 30–90s on free tier)
         run: |
           set +e  # don't let a curl timeout kill the step — keep retrying

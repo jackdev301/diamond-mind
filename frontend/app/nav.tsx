@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/tracker", label: "Tracker" },
   { href: "/report", label: "Report" },
   { href: "/verify", label: "Verifier" },
+  { href: "/admin", label: "Admin" },
 ];
 
 export function NavLinks() {

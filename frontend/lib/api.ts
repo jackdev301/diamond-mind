@@ -288,6 +288,32 @@ export const api = {
       `/tracker/auto-track?game_date=${date}`,
       {},
     ),
+  adminRunIngestion: (date: string) =>
+    post<{ job_id: string; as_of: string; status: string }>(
+      `/admin/run-ingestion?game_date=${date}`,
+      {},
+    ),
+  adminIngestionStatus: (jobId: string, tail?: number) =>
+    get<{
+      job_id: string;
+      status: string;
+      started_at: string;
+      as_of: string;
+      error: string | null;
+      log_lines_total: number;
+      log_tail: string[];
+    }>(`/admin/ingestion-status/${jobId}${tail ? `?tail=${tail}` : ""}`),
+  adminIngestionJobs: () =>
+    get<
+      Array<{
+        job_id: string;
+        status: string;
+        started_at: string;
+        as_of: string;
+        log_lines_total: number;
+        error: string | null;
+      }>
+    >(`/admin/ingestion-jobs`),
 };
 
 export type QuantVerify = {

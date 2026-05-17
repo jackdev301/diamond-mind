@@ -11,7 +11,13 @@ Run with:
 from __future__ import annotations
 
 import dataclasses
+import logging
+import os
+import subprocess
+import sys
+import threading
 import time
+import uuid
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -1794,3 +1800,107 @@ def auto_track(
 
     db.commit()
     return {"created": created, "skipped": skipped, "date": game_date.isoformat()}
+
+
+# ---------------------------------------------------------------------------
+# Admin — server-side ingestion
+# Runs run_pregame_update.py as a subprocess so it executes on the Render VM,
+# eliminating the ~100ms-per-query network round-trip from local machines.
+# ---------------------------------------------------------------------------
+
+_INGESTION_JOBS: Dict[str, Dict] = {}   # job_id → {status, started_at, as_of, log_lines, error}
+_INGESTION_LOCK = threading.Lock()
+
+
+def _run_ingestion_subprocess(job_id: str, as_of: date) -> None:
+    job = _INGESTION_JOBS[job_id]
+    job["status"] = "running"
+    try:
+        script = os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "run_pregame_update.py")
+        script = os.path.abspath(script)
+        cmd = [sys.executable, script, "--date", as_of.isoformat()]
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        for line in proc.stdout:
+            job["log_lines"].append(line.rstrip())
+        proc.wait()
+        if proc.returncode == 0:
+            job["status"] = "done"
+        else:
+            job["status"] = "error"
+            job["error"] = f"Process exited with code {proc.returncode}"
+    except Exception as exc:
+        job["status"] = "error"
+        job["error"] = str(exc)
+        logging.getLogger("admin.ingestion").exception("Ingestion job %s failed", job_id)
+
+
+@app.post("/admin/run-ingestion")
+def trigger_ingestion(game_date: Optional[date] = Query(default=None)):
+    """
+    Trigger a full pregame ingestion run server-side (runs on the Render VM).
+    Returns a job_id immediately; poll /admin/ingestion-status/{job_id} for progress.
+    Idempotent: if a job is already running for the same date, returns its job_id.
+    """
+    if game_date is None:
+        game_date = date.today()
+
+    with _INGESTION_LOCK:
+        # Prevent double-starts for the same date if already in flight
+        for jid, job in _INGESTION_JOBS.items():
+            if job["as_of"] == game_date.isoformat() and job["status"] == "running":
+                return {"job_id": jid, "as_of": game_date.isoformat(), "status": "already_running"}
+
+        job_id = uuid.uuid4().hex[:12]
+        _INGESTION_JOBS[job_id] = {
+            "status": "queued",
+            "started_at": datetime.utcnow().isoformat() + "Z",
+            "as_of": game_date.isoformat(),
+            "log_lines": [],
+            "error": None,
+        }
+
+    t = threading.Thread(target=_run_ingestion_subprocess, args=(job_id, game_date), daemon=True)
+    t.start()
+    return {"job_id": job_id, "as_of": game_date.isoformat(), "status": "queued"}
+
+
+@app.get("/admin/ingestion-status/{job_id}")
+def ingestion_status(job_id: str, tail: int = Query(default=100, ge=1, le=2000)):
+    """
+    Check the status and recent log output of an ingestion job.
+    tail=N returns the last N log lines (default 100).
+    """
+    job = _INGESTION_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found. It may have expired.")
+    return {
+        "job_id": job_id,
+        "status": job["status"],
+        "started_at": job["started_at"],
+        "as_of": job["as_of"],
+        "error": job["error"],
+        "log_lines_total": len(job["log_lines"]),
+        "log_tail": job["log_lines"][-tail:],
+    }
+
+
+@app.get("/admin/ingestion-jobs")
+def list_ingestion_jobs():
+    """List all ingestion jobs (running, done, error) in this server process lifetime."""
+    return [
+        {
+            "job_id": jid,
+            "status": job["status"],
+            "started_at": job["started_at"],
+            "as_of": job["as_of"],
+            "log_lines_total": len(job["log_lines"]),
+            "error": job["error"],
+        }
+        for jid, job in _INGESTION_JOBS.items()
+    ]

@@ -15,6 +15,7 @@ from datetime import date
 from typing import Any, Optional
 
 import httpx
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -417,30 +418,41 @@ def _ensure_game_log_player(
 ) -> None:
     """Upsert a minimal Player stub so FK constraints on game-log tables are satisfied.
 
-    Flushes before checking to make any pending adds from earlier in the same
-    session visible, preventing duplicate-PK batch-insert failures when the same
-    player appears in multiple boxscores within one flush cycle.
+    Uses INSERT … ON CONFLICT DO NOTHING so the operation is idempotent even when
+    the same player appears in multiple boxscores within the same session flush
+    cycle (e.g. a 60-day backfill encountering the same player ID twice).
+    We also refresh the ORM identity map so any subsequent session.get() calls
+    see the row that was just written or was already present.
     """
     fallback_name = f"Player {player_id}"
-    # Flush pending inserts first so session.get() sees them.
-    # This is necessary because autoflush may not have run yet and a previous
-    # call in the same session may have already staged an add for this player.
-    session.flush()
+    # Bypass ORM session state entirely — go straight to the DB.
+    session.execute(
+        text(
+            """
+            INSERT INTO players (id, full_name, primary_position, current_team_id)
+            VALUES (:id, :full_name, :primary_position, :team_id)
+            ON CONFLICT (id) DO UPDATE
+              SET full_name = CASE
+                    WHEN players.full_name IS NULL OR players.full_name = 'Player ' || players.id::text
+                    THEN EXCLUDED.full_name
+                    ELSE players.full_name
+                  END,
+                  primary_position = COALESCE(players.primary_position, EXCLUDED.primary_position),
+                  current_team_id  = COALESCE(players.current_team_id,  EXCLUDED.current_team_id)
+            """
+        ),
+        {
+            "id": player_id,
+            "full_name": full_name or fallback_name,
+            "primary_position": primary_position,
+            "team_id": team_id or None,
+        },
+    )
+    # Expire the identity-map entry so any ORM code that reads this player
+    # afterwards gets a fresh SELECT rather than stale in-memory state.
     existing = session.get(Player, player_id)
-    if existing:
-        if full_name and (not existing.full_name or existing.full_name == fallback_name):
-            existing.full_name = full_name
-        if primary_position and not existing.primary_position:
-            existing.primary_position = primary_position
-        if existing.current_team_id is None and team_id:
-            existing.current_team_id = team_id
-        return
-    session.add(Player(
-        id=player_id,
-        full_name=full_name or fallback_name,
-        primary_position=primary_position,
-        current_team_id=team_id or None,
-    ))
+    if existing is not None:
+        session.expire(existing)
 
 
 def upsert_game(session: Session, g: _ScheduledGame) -> Game:

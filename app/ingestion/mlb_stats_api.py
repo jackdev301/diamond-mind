@@ -415,7 +415,17 @@ def _ensure_game_log_player(
     primary_position: Optional[str],
     team_id: int,
 ) -> None:
+    """Upsert a minimal Player stub so FK constraints on game-log tables are satisfied.
+
+    Flushes before checking to make any pending adds from earlier in the same
+    session visible, preventing duplicate-PK batch-insert failures when the same
+    player appears in multiple boxscores within one flush cycle.
+    """
     fallback_name = f"Player {player_id}"
+    # Flush pending inserts first so session.get() sees them.
+    # This is necessary because autoflush may not have run yet and a previous
+    # call in the same session may have already staged an add for this player.
+    session.flush()
     existing = session.get(Player, player_id)
     if existing:
         if full_name and (not existing.full_name or existing.full_name == fallback_name):

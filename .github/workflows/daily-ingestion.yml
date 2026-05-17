@@ -26,21 +26,23 @@ jobs:
             echo "game_date=$(TZ=America/New_York date +%Y-%m-%d)" >> $GITHUB_OUTPUT
           fi
 
-      - name: Wake up Render (cold start can take ~30s)
+      - name: Wake up Render (cold start can take 30–90s on free tier)
         run: |
+          set +e  # don't let a curl timeout kill the step — keep retrying
           echo "Pinging Render health endpoint…"
-          for i in 1 2 3 4 5; do
+          for i in 1 2 3 4 5 6 7 8; do
             status=$(curl -s -o /dev/null -w "%{http_code}" \
-              --max-time 40 \
-              https://diamond-mind-api.onrender.com/health)
-            echo "  Attempt $i: HTTP $status"
+              --max-time 90 \
+              https://diamond-mind-api.onrender.com/health 2>/dev/null)
+            echo "  Attempt $i: HTTP ${status:-<timeout>}"
             if [ "$status" = "200" ]; then
               echo "Server is up."
-              break
+              exit 0
             fi
-            echo "  Server not ready, waiting 20s…"
-            sleep 20
+            echo "  Server not ready, waiting 15s…"
+            sleep 15
           done
+          echo "Server still not responding after 8 attempts — continuing anyway, trigger step will retry."
 
       - name: Trigger ingestion
         id: trigger

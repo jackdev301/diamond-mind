@@ -1,0 +1,99 @@
+name: Daily Pregame Ingestion
+
+on:
+  schedule:
+    # 10:00 AM ET = 14:00 UTC (adjusts naturally with EST/EDT)
+    - cron: "0 14 * * *"
+  workflow_dispatch:
+    inputs:
+      game_date:
+        description: "Date to run ingestion for (YYYY-MM-DD). Defaults to today."
+        required: false
+        default: ""
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Determine game date
+        id: date
+        run: |
+          if [ -n "${{ github.event.inputs.game_date }}" ]; then
+            echo "game_date=${{ github.event.inputs.game_date }}" >> $GITHUB_OUTPUT
+          else
+            echo "game_date=$(TZ=America/New_York date +%Y-%m-%d)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Wake up Render (cold start can take ~30s)
+        run: |
+          echo "Pinging Render health endpoint…"
+          for i in 1 2 3 4 5; do
+            status=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 40 \
+              https://diamond-mind-api.onrender.com/health)
+            echo "  Attempt $i: HTTP $status"
+            if [ "$status" = "200" ]; then
+              echo "Server is up."
+              break
+            fi
+            echo "  Server not ready, waiting 20s…"
+            sleep 20
+          done
+
+      - name: Trigger ingestion
+        id: trigger
+        run: |
+          GAME_DATE="${{ steps.date.outputs.game_date }}"
+          echo "Triggering ingestion for $GAME_DATE…"
+
+          RESPONSE=$(curl -s -X POST \
+            --max-time 30 \
+            "https://diamond-mind-api.onrender.com/admin/run-ingestion?game_date=${GAME_DATE}")
+
+          echo "Response: $RESPONSE"
+
+          JOB_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('job_id',''))")
+          STATUS=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))")
+
+          if [ -z "$JOB_ID" ]; then
+            echo "Failed to get job_id from response."
+            exit 1
+          fi
+
+          echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
+          echo "Ingestion job $JOB_ID started (status: $STATUS)"
+
+      - name: Poll until ingestion completes
+        run: |
+          JOB_ID="${{ steps.trigger.outputs.job_id }}"
+          echo "Polling job $JOB_ID…"
+
+          LAST_LINES=0
+          for i in $(seq 1 80); do
+            sleep 60
+
+            RESPONSE=$(curl -s --max-time 30 \
+              "https://diamond-mind-api.onrender.com/admin/ingestion-status/${JOB_ID}?tail=10")
+
+            STATUS=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))")
+            TOTAL=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('log_lines_total',0))")
+            LAST_LOG=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); lines=d.get('log_tail',[]); print(lines[-1] if lines else '')")
+            ERROR=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('error') or '')")
+
+            echo "  [$i/80] status=$STATUS  log_lines=$TOTAL  last: $LAST_LOG"
+
+            if [ "$STATUS" = "done" ]; then
+              echo "Ingestion completed successfully."
+              exit 0
+            fi
+
+            if [ "$STATUS" = "error" ]; then
+              echo "Ingestion failed: $ERROR"
+              exit 1
+            fi
+          done
+
+          echo "Timed out waiting for ingestion to complete (80 min)."
+          exit 1

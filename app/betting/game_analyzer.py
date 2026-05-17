@@ -249,8 +249,14 @@ def _offense_adj(home_form: Optional[TeamFormWindow], away_form: Optional[TeamFo
     away_off = away_form.runs_per_game or 0.0
     home_def = home_form.runs_allowed_per_game or 0.0
 
-    # Primary: runs/game vs runs allowed/game differential
-    rpg_net = ((home_off - away_def) - (away_off - home_def)) * OFFENSE_SCALE
+    # Primary: matchup-expected runs differential (Pythagorean-style)
+    #   home_expected ≈ (home_off + away_def) / 2  — home's offense meets away's defensive baseline
+    #   away_expected ≈ (away_off + home_def) / 2  — away's offense meets home's defensive baseline
+    #   net = (home_expected - away_expected) / 2  ← built into SCALE
+    # Bug fix 2026-05-17: previously had flipped signs on the defense terms,
+    # which collapsed to (home_off + home_def) − (away_off + away_def) — i.e. it rewarded
+    # teams that play in high-scoring games (Coors effect) rather than matchup edge.
+    rpg_net = ((home_off + away_def) - (away_off + home_def)) / 2 * OFFENSE_SCALE
 
     # Secondary: wOBA differential (better contact quality signal)
     woba_net = 0.0
@@ -767,12 +773,21 @@ def analyze_game(
     proj_home_runs = (home_rpg + away_rag) / 2
     proj_away_runs = (away_rpg + home_rag) / 2
 
-    # SP suppression adjustment
+    # SP suppression adjustment — better starting pitcher (lower FIP) should
+    # SUPPRESS opposing offense. Multiplier scales opponent runs.
+    #   Baseline = 4.0 (≈ 2024 MLB lg-avg FIP)
+    #   FIP 4.0 → 1.00× (neutral)
+    #   FIP 3.0 → 0.75× (clamped: ace suppresses)
+    #   FIP 5.0 → 1.25× (clamped: poor pitcher allows more)
+    # Bug fix 2026-05-17: previously was `3.5 / fip` (inverted direction
+    # AND too generous a baseline — aces inflated opponent runs, bad pitchers
+    # suppressed them). Now `fip / 4.0`, clamped [0.75, 1.25] for ±25% max swing.
+    SP_FIP_BASELINE = 4.0
     if home_fip:
-        sp_suppress = max(0.5, min(1.2, 3.5 / home_fip))
+        sp_suppress = max(0.75, min(1.25, home_fip / SP_FIP_BASELINE))
         proj_away_runs *= sp_suppress
     if away_fip:
-        sp_suppress = max(0.5, min(1.2, 3.5 / away_fip))
+        sp_suppress = max(0.75, min(1.25, away_fip / SP_FIP_BASELINE))
         proj_home_runs *= sp_suppress
 
     projected_total = round(proj_home_runs + proj_away_runs, 1)

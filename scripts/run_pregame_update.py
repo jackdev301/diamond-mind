@@ -229,13 +229,13 @@ def _ingest_completed_games(session, client: MLBStatsClient, yesterday: date) ->
 
 def _auto_track_picks(session, as_of: date) -> None:
     """Log all non-PASS picks for the date with Kelly-derived units (idempotent)."""
-    import requests as _requests
+    import httpx as _httpx
     import os as _os
 
     port = _os.environ.get("PORT", "8000")
     url = f"http://localhost:{port}/tracker/auto-track?game_date={as_of.isoformat()}"
     try:
-        resp = _requests.post(url, timeout=60)
+        resp = _httpx.post(url, timeout=60)
         if resp.ok:
             data = resp.json()
             log.info(

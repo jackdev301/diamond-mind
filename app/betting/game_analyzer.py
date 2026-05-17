@@ -27,7 +27,9 @@ from app.betting.quant import compute_quant_edge, quant_recommendation
 # ── Constants ─────────────────────────────────────────────────────────────────
 HOME_ADVANTAGE = 0.535         # 2022-2024 MLB home win rate (declining from old 54% avg)
 FIP_SCALE = 0.018              # each 1-run FIP advantage ≈ 1.8% win prob shift
-BULLPEN_VULN_SCALE = 0.0012   # each 1-pt vulnerability differential ≈ 0.12%
+BULLPEN_VULN_SCALE = 0.0009   # each 1-pt vulnerability differential ≈ 0.09% (lowered from 0.0012)
+SP_DOMINANCE_FIP_THRESHOLD = 4.0   # starters below this FIP reduce bullpen reliance
+SP_DOMINANCE_BP_DISCOUNT = 0.55    # when a starter is dominant, bullpen weight × 0.55
 OFFENSE_SCALE = 0.025          # each 0.5 run/game offense edge ≈ 2.5%
 KELLY_FRACTION = 0.25          # fractional Kelly multiplier (conservative)
 WIND_OUT_THRESHOLD_MPH = 12    # wind blowing out at this speed favors Over
@@ -452,10 +454,22 @@ def analyze_game(
     vuln_diff = away_vuln - home_vuln
 
     bp_scale = BULLPEN_VULN_SCALE
+
+    # Short-starter amplifier — if either SP is a 5-inning type, bullpen matters more
     if home_sp and home_sp.avg_innings_per_start and home_sp.avg_innings_per_start < 5.5:
         bp_scale *= 1.4
     elif away_sp and away_sp.avg_innings_per_start and away_sp.avg_innings_per_start < 5.5:
         bp_scale *= 1.4
+
+    # SP dominance discount — when the starter whose bullpen is being hurt is elite,
+    # they'll pitch deep and reduce actual bullpen exposure. E.g. if home FIP < 4.0,
+    # the home bullpen vulnerability matters less because the starter eats innings.
+    # Only discount when the gap is hurting that team (vuln_diff > 0 = away bullpen worse,
+    # so home team benefits from away bullpen; home's own bullpen isn't the issue).
+    home_fip_dominant = home_fip is not None and home_fip < SP_DOMINANCE_FIP_THRESHOLD
+    away_fip_dominant = away_fip is not None and away_fip < SP_DOMINANCE_FIP_THRESHOLD
+    if home_fip_dominant or away_fip_dominant:
+        bp_scale *= SP_DOMINANCE_BP_DISCOUNT
 
     bp_adj = vuln_diff * bp_scale
     prob += bp_adj

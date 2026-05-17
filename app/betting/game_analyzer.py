@@ -775,10 +775,31 @@ def analyze_game(
         ml_kelly = qe.kelly_sized if ml_lean != "PASS" else 0.0
 
     # 7. Total (runs projection)
-    home_rpg = home_form.runs_per_game if home_form else 4.5
-    away_rpg = away_form.runs_per_game if away_form else 4.5
-    home_rag = home_form.runs_allowed_per_game if home_form else 4.5
-    away_rag = away_form.runs_allowed_per_game if away_form else 4.5
+    # Totals are very sensitive to tiny run samples. Regress R/G and RA/G
+    # toward a league-average 4.5 runs/team until a window has a real sample.
+    RUNS_BASELINE = 4.5
+    TOTAL_SAMPLE_TARGET_GAMES = 10
+
+    def _total_sample_weight(form: Optional[TeamFormWindow]) -> float:
+        games = form.games if form is not None else 0
+        return min(1.0, max(0.0, games / TOTAL_SAMPLE_TARGET_GAMES))
+
+    def _regressed_runs(value: Optional[float], form: Optional[TeamFormWindow]) -> float:
+        if value is None:
+            return RUNS_BASELINE
+        w = _total_sample_weight(form)
+        return w * value + (1.0 - w) * RUNS_BASELINE
+
+    home_rpg = _regressed_runs(home_form.runs_per_game if home_form else None, home_form)
+    away_rpg = _regressed_runs(away_form.runs_per_game if away_form else None, away_form)
+    home_rag = _regressed_runs(home_form.runs_allowed_per_game if home_form else None, home_form)
+    away_rag = _regressed_runs(away_form.runs_allowed_per_game if away_form else None, away_form)
+    total_sample_weight = min(_total_sample_weight(home_form), _total_sample_weight(away_form))
+    if total_sample_weight < 0.6:
+        cautions.append(
+            f"⚠ Total projection heavily regressed toward league average: only "
+            f"{home_form.games if home_form else 0}/{away_form.games if away_form else 0} games in team windows"
+        )
 
     # Average offense vs allowed
     proj_home_runs = (home_rpg + away_rag) / 2
@@ -838,12 +859,20 @@ def analyze_game(
 
     # ── Totals quant pipeline ────────────────────────────────────────────────
     # Convert projected_total → P(over) via a normal CDF.
-    # σ = 3.0 runs: combined-game SD is larger than per-team SD (~2.2 × √2 ≈ 3.1).
-    # We cap p_over_model at [0.15, 0.85] — extreme probabilities almost always
-    # reflect SP small-sample noise rather than genuine edge.
+    # σ starts at 3.0 runs: combined-game SD is larger than per-team SD
+    # (~2.2 × √2 ≈ 3.1). Low sample quality widens σ and lowers the cap so
+    # a two-game window cannot manufacture a 99% P(+) total.
     import math as _math
-    _TOTAL_SIGMA = 3.0
-    _TOTAL_PROB_CAP = 0.85  # max model confidence on either side
+    total_evidence_quality = evidence_quality
+    total_evidence_quality *= max(0.2, total_sample_weight)
+    if home_sp is None or home_sp.insufficient_sample:
+        total_evidence_quality *= 0.85
+    if away_sp is None or away_sp.insufficient_sample:
+        total_evidence_quality *= 0.85
+    total_evidence_quality = round(min(1.0, max(0.0, total_evidence_quality)), 4)
+
+    _TOTAL_SIGMA = 3.0 + (1.0 - total_evidence_quality) * 2.0
+    _TOTAL_PROB_CAP = 0.60 + 0.25 * total_evidence_quality
 
     compare_line = total_line if total_line is not None else 8.5
     _z_over = (projected_total - compare_line) / _TOTAL_SIGMA
@@ -870,7 +899,7 @@ def analyze_game(
         p_model_side=p_lean_side,
         side_odds=lean_over_odds,
         other_odds=lean_under_odds,
-        evidence_quality=evidence_quality,
+        evidence_quality=total_evidence_quality,
     )
 
     if not has_total_odds:
@@ -879,7 +908,7 @@ def analyze_game(
         total_lean = "PASS"
         total_conf = 0.5
     else:
-        total_tier = quant_recommendation(qt, model_confidence=p_lean_side, evidence_quality=evidence_quality)
+        total_tier = quant_recommendation(qt, model_confidence=p_lean_side, evidence_quality=total_evidence_quality)
         if total_tier == "NEED MORE INFO":
             total_tier = "PASS"
         if total_tier in ("STRONG LEAN", "LEAN"):

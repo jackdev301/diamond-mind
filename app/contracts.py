@@ -102,12 +102,12 @@ class PitcherFormWindow:
     window: WindowKey
     starts: int
     innings_pitched: float
-    era: float
-    whip: float
-    k_per_9: float
-    bb_per_9: float
-    hr_per_9: float
-    avg_innings_per_start: float
+    era: Optional[float]
+    whip: Optional[float]
+    k_per_9: Optional[float]
+    bb_per_9: Optional[float]
+    hr_per_9: Optional[float]
+    avg_innings_per_start: Optional[float]
     trend_label: TrendLabel
     as_of_date: date
     fip: Optional[float] = None

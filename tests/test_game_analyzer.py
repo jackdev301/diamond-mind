@@ -7,17 +7,17 @@ from app.contracts import PitcherFormWindow, TeamFormWindow, TrendLabel, WindowK
 from app.features.bullpen_vulnerability import BullpenReport
 
 
-def _team(abbr: str, *, rpg: float, rag: float, woba: float) -> TeamFormWindow:
+def _team(abbr: str, *, rpg: float, rag: float, woba: float, games: int = 10) -> TeamFormWindow:
     return TeamFormWindow(
         team_id=1,
         team_abbr=abbr,
         window=WindowKey.L10,
-        games=10,
+        games=games,
         runs_per_game=rpg,
         runs_allowed_per_game=rag,
         team_ops=0.760,
-        record_wins=6,
-        record_losses=4,
+        record_wins=min(6, games),
+        record_losses=max(0, games - min(6, games)),
         trend_label=TrendLabel.STABLE_STRONG,
         as_of_date=date(2026, 5, 16),
         team_woba=woba,
@@ -138,3 +138,27 @@ def test_key_factor_text_orders_away_offense_edge_values():
         for factor in analysis.key_factors
     )
     assert any("AWAY bullpen exposed" in factor and "for HOME" in factor for factor in analysis.key_factors)
+
+
+def test_total_edge_is_suppressed_with_tiny_run_samples():
+    analysis = analyze_game(
+        game_id=1,
+        home_abbr="SEA",
+        away_abbr="SD",
+        home_sp=_starter("George Kirby", fip=4.0, k9=8.0),
+        away_sp=_starter("Lucas Giolito", fip=4.0, k9=8.0),
+        home_bullpen=_bullpen("SEA", 10),
+        away_bullpen=_bullpen("SD", 31),
+        home_form=_team("SEA", rpg=2.0, rag=4.5, woba=0.270, games=2),
+        away_form=_team("SD", rpg=4.5, rag=2.0, woba=0.311, games=2),
+        weather=None,
+        total_line=7.5,
+        over_odds=-110,
+        under_odds=-110,
+    )
+
+    assert analysis.projected_total == pytest.approx(8.5)
+    assert analysis.total_tier == "PASS"
+    assert analysis.total_lean == "PASS"
+    assert analysis.qt_p_model < 0.60
+    assert any("Total projection heavily regressed" in caution for caution in analysis.cautions)

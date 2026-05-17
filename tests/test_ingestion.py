@@ -124,7 +124,8 @@ BOXSCORE_PAYLOAD = {
             "battingOrder": [],
             "players": {
                 "ID554430": {
-                    "person": {"id": 554430},
+                    "person": {"id": 554430, "fullName": "Zack Wheeler"},
+                    "position": {"abbreviation": "P"},
                     "stats": {
                         "pitching": {
                             "gamesPlayed": 1,
@@ -142,7 +143,8 @@ BOXSCORE_PAYLOAD = {
                     },
                 },
                 "ID547180": {
-                    "person": {"id": 547180},
+                    "person": {"id": 547180, "fullName": "Bryce Harper"},
+                    "position": {"abbreviation": "1B"},
                     "stats": {
                         "pitching": {},
                         "batting": {
@@ -172,7 +174,8 @@ BOXSCORE_PAYLOAD = {
             "battingOrder": [],
             "players": {
                 "ID592789": {
-                    "person": {"id": 592789},
+                    "person": {"id": 592789, "fullName": "Sean Manaea"},
+                    "position": {"abbreviation": "P"},
                     "stats": {
                         "pitching": {
                             "gamesPlayed": 1,
@@ -386,6 +389,32 @@ def test_ingest_boxscore(db):
     batter_logs = db.execute(select(PlayerGameLog)).scalars().all()
     harper = next(b for b in batter_logs if b.player_id == 547180)
     assert harper.home_runs == 1
+
+
+def test_ingest_boxscore_seeds_missing_players(db):
+    db.add(Team(id=143, abbr="PHI", name="Phillies"))
+    db.add(Team(id=121, abbr="NYM", name="Mets"))
+    db.add(Game(
+        id=778001, game_date=date(2026, 5, 15), status="Final",
+        home_team_id=143, away_team_id=121, venue="Citizens Bank Park",
+        is_doubleheader=False, game_number=1,
+    ))
+    db.flush()
+
+    class _FakeClient:
+        def fetch_boxscore(self, pk):
+            return BOXSCORE_PAYLOAD
+
+    ingest_boxscore(db, _FakeClient(), 778001, date(2026, 5, 15))
+
+    wheeler = db.get(Player, 554430)
+    harper = db.get(Player, 547180)
+    assert wheeler is not None
+    assert wheeler.full_name == "Zack Wheeler"
+    assert wheeler.primary_position == "P"
+    assert harper is not None
+    assert harper.full_name == "Bryce Harper"
+    assert harper.primary_position == "1B"
 
 
 def test_ingest_boxscore_idempotent(db):

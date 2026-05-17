@@ -200,6 +200,8 @@ class _BoxTeamStats:
 @dataclass
 class _BatterLine:
     player_id: int
+    full_name: Optional[str]
+    primary_position: Optional[str]
     team_id: int
     plate_appearances: int
     at_bats: int
@@ -219,6 +221,7 @@ class _BatterLine:
 @dataclass
 class _PitcherLine:
     player_id: int
+    full_name: Optional[str]
     team_id: int
     role: str           # "starter" or "reliever"
     started: bool
@@ -307,6 +310,7 @@ def parse_boxscore(
                 gs = pit.get("gamesStarted", 0)
                 pitchers.append(_PitcherLine(
                     player_id=pid,
+                    full_name=pdata.get("person", {}).get("fullName"),
                     team_id=team_id,
                     role="starter" if gs else "reliever",
                     started=bool(gs),
@@ -327,6 +331,8 @@ def parse_boxscore(
                 if pid not in pitching_ids:
                     batters.append(_BatterLine(
                         player_id=pid,
+                        full_name=pdata.get("person", {}).get("fullName"),
+                        primary_position=pdata.get("position", {}).get("abbreviation"),
                         team_id=team_id,
                         plate_appearances=bat.get("plateAppearances", 0),
                         at_bats=bat.get("atBats", 0),
@@ -398,6 +404,31 @@ def _ensure_probable_pitcher(
         id=pitcher_id,
         full_name=full_name or fallback_name,
         primary_position="P",
+        current_team_id=team_id or None,
+    ))
+
+
+def _ensure_game_log_player(
+    session: Session,
+    player_id: int,
+    full_name: Optional[str],
+    primary_position: Optional[str],
+    team_id: int,
+) -> None:
+    fallback_name = f"Player {player_id}"
+    existing = session.get(Player, player_id)
+    if existing:
+        if full_name and (not existing.full_name or existing.full_name == fallback_name):
+            existing.full_name = full_name
+        if primary_position and not existing.primary_position:
+            existing.primary_position = primary_position
+        if existing.current_team_id is None and team_id:
+            existing.current_team_id = team_id
+        return
+    session.add(Player(
+        id=player_id,
+        full_name=full_name or fallback_name,
+        primary_position=primary_position,
         current_team_id=team_id or None,
     ))
 
@@ -483,6 +514,13 @@ def upsert_player_game_log(
     ).scalar_one_or_none()
     if existing:
         return  # box score data is final; don't re-write
+    _ensure_game_log_player(
+        session,
+        b.player_id,
+        b.full_name,
+        b.primary_position,
+        b.team_id,
+    )
     session.add(PlayerGameLog(
         game_id=game_id,
         player_id=b.player_id,
@@ -519,6 +557,13 @@ def upsert_pitcher_game_log(
     ).scalar_one_or_none()
     if existing:
         return
+    _ensure_game_log_player(
+        session,
+        p.player_id,
+        p.full_name,
+        "P",
+        p.team_id,
+    )
     session.add(PitcherGameLog(
         game_id=game_id,
         pitcher_id=p.player_id,

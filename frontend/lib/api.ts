@@ -102,6 +102,7 @@ export type BullpenData = {
 };
 
 export type PitcherForm = {
+  starts: number;
   pitcher_name: string;
   era: number | null;
   whip: number | null;

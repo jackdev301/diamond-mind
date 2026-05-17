@@ -272,14 +272,20 @@ def _offense_adj(home_form: Optional[TeamFormWindow], away_form: Optional[TeamFo
         side = "HOME" if net > 0 else "AWAY"
         if home_woba and away_woba:
             woba_gap = abs(home_woba - away_woba)
+            edge_rpg = home_off if side == "HOME" else away_off
+            edge_woba = home_woba if side == "HOME" else away_woba
+            other_rpg = away_off if side == "HOME" else home_off
+            other_woba = away_woba if side == "HOME" else home_woba
             edge_str = (
-                f"{side} offense edge: {home_off:.1f} R/G wOBA {home_woba:.3f}"
-                f" vs {away_off:.1f} R/G wOBA {away_woba:.3f}"
+                f"{side} offense edge: {edge_rpg:.1f} R/G wOBA {edge_woba:.3f}"
+                f" vs {other_rpg:.1f} R/G wOBA {other_woba:.3f}"
                 f" — wOBA gap {woba_gap:.3f} → +{abs(net) * 100:.1f}% net shift"
             )
         else:
+            edge_off = home_off if side == "HOME" else away_off
+            other_allowed = away_def if side == "HOME" else home_def
             edge_str = (
-                f"{side} offense edge: HOME {home_off:.1f} R/G vs {away_def:.1f} RA/G allowed"
+                f"{side} offense edge: {edge_off:.1f} R/G vs opponent {other_allowed:.1f} RA/G allowed"
                 f" → +{abs(net) * 100:.1f}% net shift"
             )
     return net, edge_str
@@ -488,10 +494,11 @@ def analyze_game(
     bp_edge = ""
     if abs(vuln_diff) >= 10:
         worse = "AWAY" if vuln_diff > 0 else "HOME"
+        beneficiary = "HOME" if vuln_diff > 0 else "AWAY"
         bp_adj_pct = abs(bp_adj) * 100
         bp_edge = (
             f"{worse} bullpen exposed: {max(home_vuln, away_vuln):.0f}/100 vs {min(home_vuln, away_vuln):.0f}/100"
-            f" — {abs(vuln_diff):.0f}-pt gap → +{bp_adj_pct:.1f}% win prob shift"
+            f" — {abs(vuln_diff):.0f}-pt gap → +{bp_adj_pct:.1f}% for {beneficiary}"
         )
         factors.append(bp_edge)
         if max(home_vuln, away_vuln) >= 70:

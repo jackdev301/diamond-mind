@@ -124,33 +124,41 @@ function StarterCard({ abbr, starter }: { abbr: string; starter: NonNullable<Gam
           <div style={{ fontWeight: 600, fontSize: "15px", marginBottom: "12px", color: "var(--text)", letterSpacing: "-0.01em" }}>
             {starter.pitcher_name}
           </div>
-          <StatRow label="ERA — Earned Run Average (runs allowed per 9 inn.; lower = better)" value={starter.era?.toFixed(2)} />
-          {starter.fip != null && (
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
-              <span style={{ fontFamily: "var(--font-body)", fontSize: "13px", color: "var(--text-2)" }}>
-                FIP — Fielding-Independent Pitching (K, BB, HR only; luck-neutral; lg avg 3.20)
-              </span>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: "13px", color: fipColor, fontWeight: 600 }}>
-                {starter.fip.toFixed(2)}
-              </span>
+          {starter.insufficient_sample && starter.starts === 0 ? (
+            <div style={{ fontSize: "12px", color: "var(--text-2)", lineHeight: 1.45 }}>
+              Announced starter. No recent-start sample is available in the database yet, so rate stats are withheld.
             </div>
+          ) : (
+            <>
+              <StatRow label="ERA — Earned Run Average (runs allowed per 9 inn.; lower = better)" value={starter.era?.toFixed(2)} />
+              {starter.fip != null && (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
+                  <span style={{ fontFamily: "var(--font-body)", fontSize: "13px", color: "var(--text-2)" }}>
+                    FIP — Fielding-Independent Pitching (K, BB, HR only; luck-neutral; lg avg 3.20)
+                  </span>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "13px", color: fipColor, fontWeight: 600 }}>
+                    {starter.fip.toFixed(2)}
+                  </span>
+                </div>
+              )}
+              <StatRow label="WHIP — Walks + Hits per Inning (baserunners allowed; lower = better)" value={starter.whip?.toFixed(2)} />
+              <StatRow label="K/9 — Strikeouts per 9 innings (swing-and-miss; higher = better)" value={starter.k_per_9?.toFixed(1)} />
+              <StatRow label="BB/9 — Walks per 9 innings (control; lower = better; concern ≥ 4.5)" value={starter.bb_per_9?.toFixed(1)} />
+              {starter.babip != null && (
+                <StatRow
+                  label={`BABIP — Batting Avg on Balls in Play (luck proxy; lg avg .298; ${starter.babip >= 0.340 ? "high = unlucky" : starter.babip <= 0.265 ? "low = lucky" : "normal range"})`}
+                  value={starter.babip.toFixed(3)}
+                />
+              )}
+              {starter.avg_pitches_per_start != null && (
+                <StatRow label="Avg pitches/start (workload; concern ≥ 105 last outing)" value={starter.avg_pitches_per_start.toFixed(0)} />
+              )}
+              <StatRow label="Recent trend" value={starter.trend_label?.replace(/_/g, " ")} mono={false} />
+            </>
           )}
-          <StatRow label="WHIP — Walks + Hits per Inning (baserunners allowed; lower = better)" value={starter.whip?.toFixed(2)} />
-          <StatRow label="K/9 — Strikeouts per 9 innings (swing-and-miss; higher = better)" value={starter.k_per_9?.toFixed(1)} />
-          <StatRow label="BB/9 — Walks per 9 innings (control; lower = better; concern ≥ 4.5)" value={starter.bb_per_9?.toFixed(1)} />
-          {starter.babip != null && (
-            <StatRow
-              label={`BABIP — Batting Avg on Balls in Play (luck proxy; lg avg .298; ${starter.babip >= 0.340 ? "high = unlucky" : starter.babip <= 0.265 ? "low = lucky" : "normal range"})`}
-              value={starter.babip.toFixed(3)}
-            />
-          )}
-          {starter.avg_pitches_per_start != null && (
-            <StatRow label="Avg pitches/start (workload; concern ≥ 105 last outing)" value={starter.avg_pitches_per_start.toFixed(0)} />
-          )}
-          <StatRow label="Recent trend" value={starter.trend_label?.replace(/_/g, " ")} mono={false} />
           {starter.insufficient_sample && (
             <div style={{ marginTop: "8px", fontSize: "11px", color: "var(--amber)" }}>
-              ⚠ Small sample — fewer than 5 starts, use caution
+              Small sample — fewer than 5 starts, use caution
             </div>
           )}
         </>

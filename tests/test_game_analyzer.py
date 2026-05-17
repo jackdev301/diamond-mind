@@ -115,3 +115,26 @@ def test_short_start_amplifies_bullpen_edge():
 
     assert short.model_home_win_prob > normal.model_home_win_prob
     assert any("heavy bullpen reliance" in caution for caution in short.cautions)
+
+
+def test_key_factor_text_orders_away_offense_edge_values():
+    analysis = analyze_game(
+        game_id=1,
+        home_abbr="SEA",
+        away_abbr="SD",
+        home_sp=None,
+        away_sp=None,
+        home_bullpen=_bullpen("SEA", 10),
+        away_bullpen=_bullpen("SD", 31),
+        home_form=_team("SEA", rpg=2.0, rag=4.5, woba=0.270),
+        away_form=_team("SD", rpg=4.5, rag=2.0, woba=0.311),
+        weather=None,
+        home_ml_odds=-145,
+        away_ml_odds=135,
+    )
+
+    assert any(
+        factor.startswith("AWAY offense edge: 4.5 R/G wOBA 0.311 vs 2.0 R/G wOBA 0.270")
+        for factor in analysis.key_factors
+    )
+    assert any("AWAY bullpen exposed" in factor and "for HOME" in factor for factor in analysis.key_factors)

@@ -1690,7 +1690,15 @@ def auto_track(
 
     from app.models.odds import OddsSnapshotRow
 
+    now_utc = datetime.utcnow()
+
     for game, home_t, away_t in rows:
+        # Skip games that have already started — picks placed after first pitch
+        # are not actionable and should not be tracked.
+        if game.game_time_utc and game.game_time_utc <= now_utc:
+            skipped += 1
+            continue
+
         analysis = _build_analysis_cached(game.id, game_date, db)
         if analysis is None:
             continue

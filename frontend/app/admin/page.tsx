@@ -32,6 +32,7 @@ export default function AdminPage() {
     pollRef.current = setInterval(async () => {
       try {
         const data = await api.adminIngestionStatus(jobId, 200);
+        if (!data) return;
         setStatus(data.status);
         setLogs(data.log_tail);
         setTotalLines(data.log_lines_total);
@@ -57,6 +58,7 @@ export default function AdminPage() {
     setJobId(null);
     try {
       const data = await api.adminRunIngestion(date);
+      if (!data) throw new Error("No response from server");
       setJobId(data.job_id);
       setStatus(data.status);
     } catch (e: unknown) {

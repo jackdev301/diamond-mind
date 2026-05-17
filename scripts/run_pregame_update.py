@@ -66,11 +66,15 @@ def _compute_player_windows(session, as_of: date) -> None:
             select(Player.id).where(Player.primary_position != "P")
         ).scalars()
     )
-    for pid in player_ids:
+    total = len(player_ids)
+    log.info("Computing hitter windows for %d players…", total)
+    for i, pid in enumerate(player_ids, 1):
         for window in (WindowKey.SEASON, WindowKey.L20, WindowKey.L10, WindowKey.L5):
             w = build_hitter_form_window(session, player_id=pid, window=window, as_of_date=as_of)
             if w is not None:
                 upsert_hitter_form_window(session, w)
+        if i % 50 == 0 or i == total:
+            log.info("  Hitters: %d/%d done (%.0f%%)", i, total, 100 * i / total)
 
 
 def _compute_starter_windows(session, as_of: date) -> None:
@@ -79,13 +83,17 @@ def _compute_starter_windows(session, as_of: date) -> None:
             select(Player.id).where(Player.primary_position == "P")
         ).scalars()
     )
-    for pid in pitcher_ids:
+    total = len(pitcher_ids)
+    log.info("Computing starter windows for %d pitchers…", total)
+    for i, pid in enumerate(pitcher_ids, 1):
         for window in (WindowKey.SEASON, WindowKey.LAST_10_STARTS, WindowKey.LAST_5_STARTS):
             w = build_starter_form_window(
                 session, pitcher_id=pid, window=window, as_of_date=as_of
             )
             if w is not None:
                 _upsert_starter(session, w)
+        if i % 25 == 0 or i == total:
+            log.info("  Starters: %d/%d done (%.0f%%)", i, total, 100 * i / total)
 
 
 def _upsert_starter(session, w) -> None:
@@ -273,8 +281,9 @@ def run(as_of: date, dry_run: bool = False) -> None:
             team_ids = _active_team_ids(session)
             log.info("Recomputing form windows for %d teams", len(team_ids))
             if not dry_run:
-                for tid in team_ids:
+                for i, tid in enumerate(team_ids, 1):
                     _compute_team_windows(session, tid, as_of)
+                    log.info("  Teams: %d/%d done", i, len(team_ids))
                 log.info("Team form windows done.")
 
                 # 4. Recompute player (hitter) form windows.

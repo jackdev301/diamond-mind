@@ -323,11 +323,15 @@ def _sp_factor_str(home_sp: Optional[PitcherFormWindow], away_sp: Optional[Pitch
     home_fip = _derive_fip(home_sp)
     away_fip = _derive_fip(away_sp)
     if home_fip is None and away_fip is None:
+        if home_sp is not None and away_sp is not None:
+            return "", f"Probable starters announced ({home_sp.pitcher_name} vs {away_sp.pitcher_name}) — insufficient SP sample for edge"
         return "", "Probable starters TBD — no SP edge calculable"
     if home_fip is None:
-        return f"AWAY SP: FIP {away_fip:.2f}", f"{away_sp.pitcher_name} (AWAY) FIP {away_fip:.2f} — home SP TBD"
+        home_label = home_sp.pitcher_name if home_sp is not None else "home SP"
+        return f"AWAY SP: FIP {away_fip:.2f}", f"{away_sp.pitcher_name} (AWAY) FIP {away_fip:.2f} — {home_label} lacks SP sample"
     if away_fip is None:
-        return f"HOME SP: FIP {home_fip:.2f}", f"{home_sp.pitcher_name} (HOME) FIP {home_fip:.2f} — away SP TBD"
+        away_label = away_sp.pitcher_name if away_sp is not None else "away SP"
+        return f"HOME SP: FIP {home_fip:.2f}", f"{home_sp.pitcher_name} (HOME) FIP {home_fip:.2f} — {away_label} lacks SP sample"
 
     diff = away_fip - home_fip
     better = "HOME" if diff > 0 else "AWAY"

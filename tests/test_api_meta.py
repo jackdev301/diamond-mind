@@ -201,9 +201,12 @@ def test_game_context(client):
     assert data["away_team_abbr"] == "BOS"
     assert "home_starter" in data
     assert "away_starter" in data
+    assert data["home_starter"]["pitcher_name"] == "Test Pitcher"
+    assert data["home_starter"]["insufficient_sample"] is True
     assert "home_bullpen" in data
     assert "weather" in data
     assert "analysis" in data
+    assert "Probable starters TBD" not in " ".join(data["analysis"]["key_factors"])
 
 
 def test_game_context_not_found(client):

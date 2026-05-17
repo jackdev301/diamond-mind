@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { api } from "@/lib/api";
+import { api, getAdminToken } from "@/lib/api";
+import AdminGate from "@/components/AdminGate";
 
 const today = new Date().toISOString().split("T")[0];
 
 export default function AdminPage() {
   const [date, setDate] = useState(today);
+  const [unlocked, setUnlocked] = useState(() => Boolean(getAdminToken()));
   const [running, setRunning] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("");
@@ -80,7 +82,10 @@ export default function AdminPage() {
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold mb-1">Admin</h1>
+        <div className="flex items-start justify-between gap-4 mb-1">
+          <h1 className="text-2xl font-bold">Admin</h1>
+          <AdminGate onUnlocked={() => setUnlocked(true)} />
+        </div>
         <p className="text-slate-400 text-sm mb-6">
           Server-side operations — these run on the Render VM, not your local machine.
         </p>
@@ -103,7 +108,7 @@ export default function AdminPage() {
             />
             <button
               onClick={handleRunIngestion}
-              disabled={running}
+              disabled={running || !unlocked}
               className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium transition-colors"
             >
               {running ? "Running…" : "Run Ingestion"}

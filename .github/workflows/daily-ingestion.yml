@@ -52,6 +52,7 @@ jobs:
 
           RESPONSE=$(curl -s -X POST \
             --max-time 30 \
+            -H "X-Admin-Token: ${{ secrets.ADMIN_TOKEN }}" \
             "https://diamond-mind-api.onrender.com/admin/run-ingestion?game_date=${GAME_DATE}")
 
           echo "Response: $RESPONSE"

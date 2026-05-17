@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { api, type BetRecord, type TrackerSummary, type TrackerSummaryGroup } from "@/lib/api";
+import { api, getAdminToken, type BetRecord, type TrackerSummary, type TrackerSummaryGroup } from "@/lib/api";
+import AdminGate from "@/components/AdminGate";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -93,10 +94,12 @@ function BetRow({
   bet,
   onSettle,
   onDelete,
+  unlocked,
 }: {
   bet: BetRecord;
   onSettle: (id: number, result: "WIN" | "LOSS" | "PUSH") => void;
   onDelete: (id: number) => void;
+  unlocked: boolean;
 }) {
   const rc = resultColor(bet.result);
   const tc = tierColor(bet.tier);
@@ -174,9 +177,9 @@ function BetRow({
         {fmtUnits(bet.units_returned)}
       </span>
 
-      {/* actions */}
+      {/* actions — only shown when admin is unlocked */}
       <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-        {isPending && (
+        {unlocked && isPending && (
           <>
             <button
               onClick={() => onSettle(bet.id, "WIN")}
@@ -195,11 +198,13 @@ function BetRow({
             >P</button>
           </>
         )}
-        <button
-          onClick={() => onDelete(bet.id)}
-          style={{ ...btnBase, color: "var(--text-3)", borderColor: "var(--border-2)", background: "transparent", marginLeft: isPending ? "2px" : "0" }}
-          title="Delete"
-        >×</button>
+        {unlocked && (
+          <button
+            onClick={() => onDelete(bet.id)}
+            style={{ ...btnBase, color: "var(--text-3)", borderColor: "var(--border-2)", background: "transparent", marginLeft: isPending ? "2px" : "0" }}
+            title="Delete"
+          >×</button>
+        )}
       </div>
     </div>
   );
@@ -283,6 +288,7 @@ export default function TrackerPage() {
   const [error, setError] = useState(false);
   const [autoTracking, setAutoTracking] = useState(false);
   const [autoResult, setAutoResult] = useState<{ created: number; skipped: number } | null>(null);
+  const [unlocked, setUnlocked] = useState(() => Boolean(getAdminToken()));
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -296,7 +302,11 @@ export default function TrackerPage() {
     setSummary(s);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    queueMicrotask(() => {
+      void load();
+    });
+  }, [load]);
 
   async function handleAutoTrack() {
     setAutoTracking(true);
@@ -370,9 +380,10 @@ export default function TrackerPage() {
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
+          <AdminGate onUnlocked={() => setUnlocked(true)} />
           <button
             onClick={handleAutoTrack}
-            disabled={autoTracking}
+            disabled={autoTracking || !unlocked}
             style={{
               fontFamily: "var(--font-mono)",
               fontSize: "11px",
@@ -382,10 +393,10 @@ export default function TrackerPage() {
               padding: "8px 14px",
               borderRadius: "4px",
               border: "1px solid var(--blue)",
-              background: autoTracking ? "var(--surface)" : "var(--blue)",
-              color: autoTracking ? "var(--blue)" : "#000",
-              cursor: autoTracking ? "not-allowed" : "pointer",
-              opacity: autoTracking ? 0.7 : 1,
+              background: (autoTracking || !unlocked) ? "var(--surface)" : "var(--blue)",
+              color: (autoTracking || !unlocked) ? "var(--blue)" : "#000",
+              cursor: (autoTracking || !unlocked) ? "not-allowed" : "pointer",
+              opacity: (autoTracking || !unlocked) ? 0.5 : 1,
               transition: "opacity 0.12s",
             }}
           >
@@ -461,7 +472,7 @@ export default function TrackerPage() {
                 ▸ Pending — {pending.length}
               </div>
               {pending.map((b) => (
-                <BetRow key={b.id} bet={b} onSettle={handleSettle} onDelete={handleDelete} />
+                <BetRow key={b.id} bet={b} onSettle={handleSettle} onDelete={handleDelete} unlocked={unlocked} />
               ))}
             </>
           )}
@@ -483,7 +494,7 @@ export default function TrackerPage() {
                 ▸ Settled — {settled.length}
               </div>
               {settled.map((b) => (
-                <BetRow key={b.id} bet={b} onSettle={handleSettle} onDelete={handleDelete} />
+                <BetRow key={b.id} bet={b} onSettle={handleSettle} onDelete={handleDelete} unlocked={unlocked} />
               ))}
             </>
           )}

@@ -1,5 +1,33 @@
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+// ---------------------------------------------------------------------------
+// Admin token — stored in localStorage, sent as X-Admin-Token on mutations.
+// ---------------------------------------------------------------------------
+export function getAdminToken(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem("admin_token") ?? "";
+}
+
+export function setAdminToken(token: string): void {
+  if (typeof window === "undefined") return;
+  if (token) {
+    localStorage.setItem("admin_token", token);
+  } else {
+    localStorage.removeItem("admin_token");
+  }
+}
+
+function adminHeaders(extra?: Record<string, string>): Record<string, string> {
+  const token = getAdminToken();
+  return {
+    ...(token ? { "X-Admin-Token": token } : {}),
+    ...extra,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// HTTP helpers
+// ---------------------------------------------------------------------------
 async function get<T>(path: string): Promise<T | null> {
   try {
     const res = await fetch(`${API}${path}`, { next: { revalidate: 60 } });
@@ -14,7 +42,7 @@ async function post<T>(path: string, body: unknown): Promise<T | null> {
   try {
     const res = await fetch(`${API}${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...adminHeaders() },
       body: JSON.stringify(body),
     });
     if (!res.ok) return null;
@@ -28,7 +56,7 @@ async function patch<T>(path: string, body: unknown): Promise<T | null> {
   try {
     const res = await fetch(`${API}${path}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...adminHeaders() },
       body: JSON.stringify(body),
     });
     if (!res.ok) return null;
@@ -40,7 +68,10 @@ async function patch<T>(path: string, body: unknown): Promise<T | null> {
 
 async function del(path: string): Promise<boolean> {
   try {
-    const res = await fetch(`${API}${path}`, { method: "DELETE" });
+    const res = await fetch(`${API}${path}`, {
+      method: "DELETE",
+      headers: adminHeaders(),
+    });
     return res.ok || res.status === 204;
   } catch {
     return false;

@@ -21,7 +21,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
@@ -29,7 +29,7 @@ from sqlalchemy.orm import aliased
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.contracts import WindowKey
+from app.contracts import PitcherFormWindow, TrendLabel, WindowKey
 from app.database import SessionLocal, engine, Base
 from app.ingestion.park_factors import get_park_factor
 from app.features.recent_form import (
@@ -130,6 +130,18 @@ def _get_db():
         yield session
 
 
+_ADMIN_TOKEN: str | None = os.environ.get("ADMIN_TOKEN")
+
+
+def _require_admin(x_admin_token: str | None = Header(default=None)) -> None:
+    """Dependency: reject request if ADMIN_TOKEN is set and header doesn't match."""
+    if not _ADMIN_TOKEN:
+        # Token not configured — open (dev/local mode). Log a warning once.
+        return
+    if x_admin_token != _ADMIN_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid or missing admin token")
+
+
 def _dc(obj) -> dict:
     """Serialize a dataclass (including nested ones) to JSON-safe dict."""
     if obj is None:
@@ -144,6 +156,45 @@ def _dc(obj) -> dict:
     if hasattr(obj, "value"):  # Enum
         return obj.value
     return obj
+
+
+def _starter_form_or_announced(
+    db: Session,
+    *,
+    pitcher_id: Optional[int],
+    window: WindowKey,
+    as_of: date,
+) -> Optional[PitcherFormWindow]:
+    """Return starter form, or a name-only small-sample record for announced SPs."""
+    if pitcher_id is None:
+        return None
+    window_data = build_starter_form_window(
+        db,
+        pitcher_id=pitcher_id,
+        window=window,
+        as_of_date=as_of,
+    )
+    if window_data is not None:
+        return window_data
+
+    pitcher = db.get(Player, pitcher_id)
+    return PitcherFormWindow(
+        pitcher_id=pitcher_id,
+        pitcher_name=pitcher.full_name if pitcher is not None else f"Announced starter #{pitcher_id}",
+        team_id=(pitcher.current_team_id if pitcher is not None else None) or 0,
+        window=window,
+        starts=0,
+        innings_pitched=0.0,
+        era=0.0,
+        whip=0.0,
+        k_per_9=0.0,
+        bb_per_9=0.0,
+        hr_per_9=0.0,
+        avg_innings_per_start=0.0,
+        trend_label=TrendLabel.SMALL_SAMPLE_WARN,
+        as_of_date=as_of,
+        insufficient_sample=True,
+    )
 
 
 def _safe_rate(num: float, den: float) -> Optional[float]:
@@ -670,13 +721,12 @@ def game_bundle(
         return _dc(w)
 
     def _starter(pitcher_id):
-        if pitcher_id is None:
-            return None
-        w = build_starter_form_window(
-            db, pitcher_id=pitcher_id,
-            window=WindowKey.LAST_5_STARTS, as_of_date=as_of,
-        )
-        return _dc(w)
+        return _dc(_starter_form_or_announced(
+            db,
+            pitcher_id=pitcher_id,
+            window=WindowKey.LAST_5_STARTS,
+            as_of=as_of,
+        ))
 
     def _bullpen(team_id: int, probable_starter_id: Optional[int] = None):
         exclude = [probable_starter_id] if probable_starter_id else None
@@ -752,13 +802,12 @@ def game_context(
         return _dc(w)
 
     def _starter(pitcher_id):
-        if pitcher_id is None:
-            return None
-        w = build_starter_form_window(
-            db, pitcher_id=pitcher_id,
-            window=WindowKey.LAST_5_STARTS, as_of_date=as_of,
-        )
-        return _dc(w)
+        return _dc(_starter_form_or_announced(
+            db,
+            pitcher_id=pitcher_id,
+            window=WindowKey.LAST_5_STARTS,
+            as_of=as_of,
+        ))
 
     def _bullpen(team_id: int, probable_starter_id: Optional[int] = None):
         exclude = [probable_starter_id] if probable_starter_id else None
@@ -960,11 +1009,11 @@ def _build_analysis(game_id: int, as_of: date, db: Session):
     away_team = db.get(Team, away_id)
 
     def _sp(pitcher_id):
-        if pitcher_id is None:
-            return None
-        return build_starter_form_window(
-            db, pitcher_id=pitcher_id,
-            window=WindowKey.LAST_5_STARTS, as_of_date=as_of,
+        return _starter_form_or_announced(
+            db,
+            pitcher_id=pitcher_id,
+            window=WindowKey.LAST_5_STARTS,
+            as_of=as_of,
         )
 
     def _bp(team_id, probable_starter_id=None):
@@ -1583,7 +1632,12 @@ def create_bet(body: BetCreateBody, db: Session = Depends(_get_db)):
 
 
 @app.patch("/tracker/bets/{bet_id}", tags=["tracker"])
-def settle_bet(bet_id: int, body: BetSettleBody, db: Session = Depends(_get_db)):
+def settle_bet(
+    bet_id: int,
+    body: BetSettleBody,
+    db: Session = Depends(_get_db),
+    _: None = Depends(_require_admin),
+):
     """Settle a bet. Auto-computes units_returned if not provided."""
     record = db.get(BetRecord, bet_id)
     if record is None:
@@ -1602,7 +1656,11 @@ def settle_bet(bet_id: int, body: BetSettleBody, db: Session = Depends(_get_db))
 
 
 @app.delete("/tracker/bets/{bet_id}", tags=["tracker"], status_code=204)
-def delete_bet(bet_id: int, db: Session = Depends(_get_db)):
+def delete_bet(
+    bet_id: int,
+    db: Session = Depends(_get_db),
+    _: None = Depends(_require_admin),
+):
     """Remove a tracked bet."""
     record = db.get(BetRecord, bet_id)
     if record is None:
@@ -1667,6 +1725,7 @@ def _kelly_units(kelly_sized: float) -> float:
 def auto_track(
     game_date: date = Query(..., description="YYYY-MM-DD"),
     db: Session = Depends(_get_db),
+    _: None = Depends(_require_admin),
 ):
     """Automatically log all non-PASS picks for a date with Kelly-derived units.
 
@@ -1849,7 +1908,10 @@ def _run_ingestion_subprocess(job_id: str, as_of: date) -> None:
 
 
 @app.post("/admin/run-ingestion")
-def trigger_ingestion(game_date: Optional[date] = Query(default=None)):
+def trigger_ingestion(
+    game_date: Optional[date] = Query(default=None),
+    _: None = Depends(_require_admin),
+):
     """
     Trigger a full pregame ingestion run server-side (runs on the Render VM).
     Returns a job_id immediately; poll /admin/ingestion-status/{job_id} for progress.

@@ -159,8 +159,6 @@ function SlatePageInner() {
 
   useEffect(() => {
     let alive = true;
-    setGames(null);
-    setError(false);
     api.slate(date).then((g) => {
       if (!alive) return;
       if (g === null) setError(true);

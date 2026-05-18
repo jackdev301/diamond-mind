@@ -621,8 +621,18 @@ def ingest_teams(session: Session, client: MLBStatsClient) -> int:
 def ingest_roster(session: Session, client: MLBStatsClient, team_id: int) -> int:
     payload = client.fetch_roster(team_id)
     players = parse_roster(payload)
+    # Deduplicate by player id — the MLB API occasionally returns the same player
+    # twice in a 40-man roster (e.g. when a player is on both the active and IL
+    # sections).  Processing duplicates with autoflush=False causes the second
+    # upsert_player call to see a pending-but-unflushed add as "not found" and
+    # add another Player object, resulting in a duplicate-PK batch INSERT crash.
+    seen_ids: set[int] = set()
     for p in players:
-        # Minimal upsert from roster; fetch_player fills bats/throws.
+        pid = p.get("id")
+        if pid and pid in seen_ids:
+            continue
+        if pid:
+            seen_ids.add(pid)
         upsert_player(session, {**p, "current_team_id": team_id})
     session.flush()
     return len(players)

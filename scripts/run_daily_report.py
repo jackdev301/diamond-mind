@@ -1,6 +1,7 @@
 """Generate today's daily markdown report and save to obsidian_vault."""
 from __future__ import annotations
 
+import argparse
 import logging
 import sys
 from datetime import date
@@ -74,7 +75,15 @@ def _build_bundle(db, game: Game, report_date: date):
 
 
 def main():
-    report_date = date.today()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--date", default=date.today().isoformat(),
+                        help="Report date YYYY-MM-DD (default: today)")
+    args = parser.parse_args()
+    try:
+        report_date = date.fromisoformat(args.date)
+    except ValueError:
+        print(f"Invalid date: {args.date}", file=sys.stderr)
+        sys.exit(1)
     log.info(f"Generating report for {report_date}")
 
     with SessionLocal() as db:

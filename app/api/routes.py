@@ -61,7 +61,7 @@ app = FastAPI(
         "no LLM inference, no fabricated stats. Data sourced from MLB Stats API "
         "and The Odds API."
     ),
-    version="0.3.0",
+    version="0.3.1",
     docs_url="/docs",
     redoc_url="/redoc",
 )

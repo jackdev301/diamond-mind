@@ -14,7 +14,7 @@ on:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     steps:
       - name: Determine game date
@@ -27,29 +27,36 @@ jobs:
           fi
 
       - name: Deploy latest code to Render
+        # continue-on-error so a missing/broken deploy hook never blocks ingestion
+        continue-on-error: true
         run: |
+          if [ -z "${{ secrets.RENDER_DEPLOY_HOOK }}" ]; then
+            echo "RENDER_DEPLOY_HOOK secret not set — skipping deploy trigger."
+            exit 0
+          fi
           echo "Triggering Render deploy…"
-          DEPLOY_ID=$(curl -s "${{ secrets.RENDER_DEPLOY_HOOK }}" \
-            | python3 -c "import sys,json; print(json.load(sys.stdin)['deploy']['id'])")
+          RESPONSE=$(curl -s "${{ secrets.RENDER_DEPLOY_HOOK }}")
+          DEPLOY_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['deploy']['id'])" 2>/dev/null || echo "unknown")
           echo "Deploy ID: $DEPLOY_ID"
+          echo "Waiting 3 minutes for Render to finish deploying…"
+          sleep 180
 
-      - name: Wake up Render (cold start can take 30–90s on free tier)
+      - name: Wake up Render and wait until healthy
         run: |
-          set +e  # don't let a curl timeout kill the step — keep retrying
+          set +e
           echo "Pinging Render health endpoint…"
-          for i in 1 2 3 4 5 6 7 8; do
+          for i in $(seq 1 16); do
             status=$(curl -s -o /dev/null -w "%{http_code}" \
               --max-time 90 \
               https://diamond-mind-api.onrender.com/health 2>/dev/null)
-            echo "  Attempt $i: HTTP ${status:-<timeout>}"
+            echo "  Attempt $i/16: HTTP ${status:-<timeout>}"
             if [ "$status" = "200" ]; then
               echo "Server is up."
               exit 0
             fi
-            echo "  Server not ready, waiting 15s…"
             sleep 15
           done
-          echo "Server still not responding after 8 attempts — continuing anyway, trigger step will retry."
+          echo "Server still not responding after 4 minutes — continuing anyway."
 
       - name: Trigger ingestion
         id: trigger
@@ -81,7 +88,7 @@ jobs:
           echo "Polling job $JOB_ID…"
 
           LAST_LINES=0
-          for i in $(seq 1 80); do
+          for i in $(seq 1 100); do
             sleep 60
 
             RESPONSE=$(curl -s --max-time 30 \
@@ -105,5 +112,5 @@ jobs:
             fi
           done
 
-          echo "Timed out waiting for ingestion to complete (80 min)."
+          echo "Timed out waiting for ingestion to complete (100 min)."
           exit 1

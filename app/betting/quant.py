@@ -281,6 +281,7 @@ def compute_quant_edge(
     side_odds: int,
     other_odds: int,
     evidence_quality: float,
+    max_effective_n: float = 60.0,
 ) -> QuantEdge:
     """End-to-end quant pipeline for one side of a moneyline.
 
@@ -288,6 +289,9 @@ def compute_quant_edge(
     `side_odds`      American odds for that side
     `other_odds`     American odds for the opponent (needed to devig)
     `evidence_quality` ∈ [0,1] drives both shrinkage weight and posterior N
+    `max_effective_n` caps the Beta posterior sample size; use a smaller value
+                     (e.g. 25) for totals where the projection itself carries
+                     ~3-run SD that is not captured in evidence_quality alone
     """
     # Proportional devig (the naive baseline we are comparing against)
     r_side = 1.0 / _decimal(side_odds)
@@ -303,7 +307,7 @@ def compute_quant_edge(
     w = min(1.0, max(0.0, evidence_quality))
     p_shrunk = shrink_to_market(p_model_side, shin_vf, w)
 
-    post = edge_posterior(p_shrunk, shin_vf, evidence_quality)
+    post = edge_posterior(p_shrunk, shin_vf, evidence_quality, max_effective_n=max_effective_n)
 
     f_full = full_kelly(p_shrunk, side_odds)
     f_sized, mult = uncertainty_kelly(p_shrunk, side_odds, post.edge_mean, post.edge_sd)

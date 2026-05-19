@@ -895,11 +895,16 @@ def analyze_game(
         lean_over_odds = _actual_under_odds
         lean_under_odds = _actual_over_odds
 
+    # Totals use a lower max_effective_n than ML (25 vs 60) because the
+    # run-total projection carries ~3-run inherent SD that is not captured
+    # in evidence_quality alone. A large projection-line gap does not imply
+    # the same certainty as a large ML edge — runs are much noisier.
     qt = compute_quant_edge(
         p_model_side=p_lean_side,
         side_odds=lean_over_odds,
         other_odds=lean_under_odds,
         evidence_quality=total_evidence_quality,
+        max_effective_n=25.0,
     )
 
     if not has_total_odds:
@@ -914,7 +919,10 @@ def analyze_game(
         if total_tier in ("STRONG LEAN", "LEAN"):
             total_lean = total_lean_side
             total_kelly = qt.kelly_sized
-            total_conf = qt.prob_positive
+            # Cap at 0.87: prob_positive measures P(edge>0), not P(bet wins).
+            # A run-total model can never be 99%+ certain — the projection
+            # itself has ~3-run SD that the quant posterior doesn't see.
+            total_conf = min(0.87, qt.prob_positive)
         else:
             total_lean = "PASS"
             total_kelly = 0.0

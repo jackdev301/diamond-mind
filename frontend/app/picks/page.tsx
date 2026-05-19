@@ -5,6 +5,7 @@ import Link from "next/link";
 import { api, type GameAnalysis } from "@/lib/api";
 import { teamLogoUrl } from "@/lib/team-logos";
 import { Gauge, DuelBar, MethodCompare, GrowthReadout, tierColor, pPlusColor } from "@/components/quant";
+import { ExplainTooltip } from "@/components/explain";
 
 // ── Track button + unit modal ─────────────────────────────────────────────────
 
@@ -279,7 +280,9 @@ function PickCard({
               <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "15px" }}>{pick.home_team_abbr}</span>
               {pick.venue && <span style={{ fontSize: "10px", color: "var(--text-3)", marginLeft: "4px" }}>{pick.venue}</span>}
             </div>
-            <span className="tier-badge" style={{ color: tc, borderColor: tc }}>{pick.ml_tier}</span>
+            <ExplainTooltip term="tiers">
+              <span className="tier-badge" style={{ color: tc, borderColor: tc }}>{pick.ml_tier}</span>
+            </ExplainTooltip>
           </div>
 
           {/* Middle: ML verdict + gauge */}
@@ -308,7 +311,10 @@ function PickCard({
                   </div>
                   <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-2)", marginTop: "5px" }}>
                     {pick.ml_american_odds > 0 ? "+" : ""}{pick.ml_american_odds} ·{" "}
-                    Shin-devigged · shrunk to {(pick.q_p_shrunk * 100).toFixed(1)}%
+                    Shin-devigged · shrunk to{" "}
+                    <span className="scoreboard-num" style={{ fontSize: "13px", color: "var(--text)" }}>
+                      {(pick.q_p_shrunk * 100).toFixed(1)}%
+                    </span>
                   </div>
                 </>
               ) : (
@@ -337,6 +343,13 @@ function PickCard({
 
           {/* Bottom: growth HUD */}
           <div style={{ marginTop: "14px" }}>
+            <div
+              className="section-label"
+              style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}
+            >
+              Bankroll math
+              <ExplainTooltip term="uncertainty-kelly" />
+            </div>
             <GrowthReadout a={pick} />
           </div>
 

@@ -87,12 +87,12 @@ function GameCard({ game, index }: { game: SlateGame; index: number }) {
   return (
     <Link href={`/game/${game.game_id}?date=${game.game_date}`} style={{ textDecoration: "none" }}>
       <div
-        className="game-card fade-up"
+        className="game-card fade-up infield-divider"
         style={{
           "--delay": `${index * 35}ms`,
+          "--clay": hasTier ? tc : "var(--border-2)",
           background: "var(--surface)",
           border: "1px solid var(--border)",
-          borderLeft: `2px solid ${tc}`,
           borderRadius: "6px",
           padding: "14px 18px",
           display: "grid",
@@ -127,7 +127,14 @@ function GameCard({ game, index }: { game: SlateGame; index: number }) {
                   {leanAbbr} to win
                 </div>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--text-2)", marginTop: "1px" }}>
-                  {Math.round(analysis.ml_confidence * 100)}% · {(analysis.ml_kelly_fraction * 100).toFixed(1)}% K
+                  <span className="scoreboard-num" style={{ fontSize: "12px", color: "var(--text)" }}>
+                    {Math.round(analysis.ml_confidence * 100)}%
+                  </span>{" "}
+                  ·{" "}
+                  <span className="scoreboard-num" style={{ fontSize: "12px", color: "var(--text)" }}>
+                    {(analysis.ml_kelly_fraction * 100).toFixed(1)}%
+                  </span>{" "}
+                  K
                 </div>
               </>
             ) : (
@@ -170,7 +177,15 @@ function SlatePageInner() {
   function changeDate(d: string) { setGames(null); setError(false); setDate(d); }
 
   return (
-    <div>
+    <div style={{ position: "relative" }}>
+      <div className="diamond-watermark" aria-hidden="true">
+        <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+          <polygon points="100,16 184,100 100,184 16,100" fill="none" stroke="var(--text)" strokeWidth={1} />
+          <polygon points="100,58 142,100 100,142 58,100" fill="none" stroke="var(--text)" strokeWidth={1} />
+          <line x1="100" y1="16" x2="100" y2="184" stroke="var(--text)" strokeWidth={1} />
+          <line x1="16" y1="100" x2="184" y2="100" stroke="var(--text)" strokeWidth={1} />
+        </svg>
+      </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px", paddingBottom: "14px", borderBottom: "1px solid var(--border)" }}>
         <div>
           <h1 style={{ fontWeight: 700, fontSize: "20px", letterSpacing: "-0.03em", margin: 0 }}>Daily Slate</h1>

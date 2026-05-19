@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/tracker", label: "Tracker" },
   { href: "/report", label: "Report" },
   { href: "/verify", label: "Verifier" },
+  { href: "/track-record", label: "Track Record" },
   { href: "/admin", label: "Admin" },
 ];
 

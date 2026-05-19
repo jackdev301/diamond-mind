@@ -40,7 +40,7 @@ from app.ingestion.odds_api import fetch_events, fetch_odds, match_event_id, is_
 from app.ingestion.venue_coords import get_coords
 from app.ingestion.weather_api import fetch_weather
 from app.models.entities import Player, Team
-from app.models.games import Game
+from app.models.games import Game, TeamGameLog
 from app.models.odds import OddsSnapshotRow, WeatherSnapshotRow
 
 logging.basicConfig(
@@ -221,6 +221,7 @@ def _ingest_completed_games(
     client: MLBStatsClient,
     game_date: date,
     game_type: str | None = "R",
+    force: bool = False,
 ) -> int:
     pks = ingest_schedule(session, client, game_date, game_type=game_type)
     session.flush()
@@ -232,13 +233,34 @@ def _ingest_completed_games(
         )
     ).all()
 
+    # Find which game_ids already have box score data so we can skip them.
+    # A game has a box score iff it has at least one TeamGameLog row.
+    if not force and completed:
+        completed_ids = {pk for (pk, _) in completed}
+        already_done = set(
+            session.execute(
+                select(TeamGameLog.game_id).where(
+                    TeamGameLog.game_id.in_(completed_ids)
+                ).distinct()
+            ).scalars()
+        )
+    else:
+        already_done = set()
+
     ingested = 0
+    skipped = 0
     for (pk, gdate) in completed:
+        if pk in already_done:
+            skipped += 1
+            continue
         try:
             ingest_boxscore(session, client, pk, gdate)
             ingested += 1
         except Exception as exc:
             log.warning("Failed to ingest box score game=%d: %s", pk, exc)
+
+    if skipped:
+        log.debug("Skipped %d already-ingested box scores for %s.", skipped, game_date)
     return ingested
 
 
@@ -248,18 +270,25 @@ def _ingest_completed_history(
     *,
     start: date,
     end: date,
+    force: bool = False,
 ) -> int:
-    """Backfill completed games over a date range before form windows are built."""
+    """Ingest completed games over a date range before form windows are built.
+
+    Games whose box scores are already in the DB are skipped unless `force=True`.
+    On a warm DB this means only genuinely new completions hit the network —
+    typically 0 games for dates older than yesterday.
+    """
     if start > end:
         return 0
 
     total = 0
     days = (end - start).days + 1
-    log.info("Backfilling completed games %s → %s (%d days)", start, end, days)
+    log.info("Checking completed games %s → %s (%d days, force=%s)", start, end, days, force)
     for i, game_date in enumerate(_date_range(start, end), 1):
-        ingested = _ingest_completed_games(session, client, game_date)
+        ingested = _ingest_completed_games(session, client, game_date, force=force)
         total += ingested
-        log.info("  History: %s (%d/%d) ingested %d completed games", game_date, i, days, ingested)
+        if ingested or i % 10 == 0:
+            log.info("  History: %s (%d/%d) ingested %d new box scores", game_date, i, days, ingested)
     return total
 
 
@@ -284,16 +313,17 @@ def _auto_track_picks(session, as_of: date) -> None:
         log.warning("Auto-track skipped (backend not running?): %s", exc)
 
 
-def run(as_of: date, dry_run: bool = False, history_days: int = DEFAULT_HISTORY_DAYS) -> None:
+def run(as_of: date, dry_run: bool = False, history_days: int = DEFAULT_HISTORY_DAYS, force_reingest: bool = False) -> None:
     settings = get_settings()
     yesterday = as_of - timedelta(days=1)
 
     log.info(
-        "Pregame update for %s (yesterday=%s, dry_run=%s, history_days=%d)",
+        "Pregame update for %s (yesterday=%s, dry_run=%s, history_days=%d, force_reingest=%s)",
         as_of,
         yesterday,
         dry_run,
         history_days,
+        force_reingest,
     )
 
     with MLBStatsClient() as client:
@@ -324,6 +354,7 @@ def run(as_of: date, dry_run: bool = False, history_days: int = DEFAULT_HISTORY_
                     client,
                     start=history_start,
                     end=yesterday,
+                    force=force_reingest,
                 )
                 log.info("Ingested %d completed box scores from %s through %s", ingested, history_start, yesterday)
 
@@ -383,7 +414,14 @@ def main() -> None:
         "--history-days",
         type=int,
         default=DEFAULT_HISTORY_DAYS,
-        help=f"Rolling history days to backfill before recomputing form windows (default: {DEFAULT_HISTORY_DAYS}).",
+        help=f"Rolling history window to check for missing box scores (default: {DEFAULT_HISTORY_DAYS}). "
+             "On a warm DB, already-ingested games are skipped automatically.",
+    )
+    parser.add_argument(
+        "--force-reingest",
+        action="store_true",
+        help="Re-fetch and upsert box scores even for games already in the DB. "
+             "Use when you suspect bad data was ingested.",
     )
     args = parser.parse_args()
 
@@ -393,7 +431,7 @@ def main() -> None:
         print(f"Invalid date: {args.date}", file=sys.stderr)
         sys.exit(1)
 
-    run(run_date, dry_run=args.dry_run, history_days=args.history_days)
+    run(run_date, dry_run=args.dry_run, history_days=args.history_days, force_reingest=args.force_reingest)
 
 
 if __name__ == "__main__":

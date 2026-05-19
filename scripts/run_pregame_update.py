@@ -49,7 +49,9 @@ logging.basicConfig(
 )
 log = logging.getLogger("run_pregame_update")
 
-DEFAULT_HISTORY_DAYS = int(os.environ.get("PREGAME_HISTORY_DAYS", "60"))
+DEFAULT_HISTORY_DAYS = int(os.environ.get("PREGAME_HISTORY_DAYS", "0"))
+# 0 = "full season since March 1". Any positive value overrides with a rolling window.
+# This env var is kept for backwards compat / emergency narrowing only.
 
 
 def _active_team_ids(session) -> list[int]:
@@ -317,12 +319,13 @@ def run(as_of: date, dry_run: bool = False, history_days: int = DEFAULT_HISTORY_
     settings = get_settings()
     yesterday = as_of - timedelta(days=1)
 
+    window_desc = f"last {history_days}d" if history_days > 0 else "full season"
     log.info(
-        "Pregame update for %s (yesterday=%s, dry_run=%s, history_days=%d, force_reingest=%s)",
+        "Pregame update for %s (yesterday=%s, dry_run=%s, gap_scan=%s, force_reingest=%s)",
         as_of,
         yesterday,
         dry_run,
-        history_days,
+        window_desc,
         force_reingest,
     )
 
@@ -344,11 +347,17 @@ def run(as_of: date, dry_run: bool = False, history_days: int = DEFAULT_HISTORY_
             if odds_available():
                 _map_odds_event_ids(session, as_of)
 
-            # 2. Ingest completed games over a rolling history window.
-            # A fresh Render/Postgres DB otherwise has only yesterday's games,
-            # which makes "season", L20, L10, and starter windows nonsense.
+            # 2. Scan for missing box scores back to the start of the season.
+            # Since already-ingested games are skipped (cheap DB check), covering
+            # the full season is essentially free on a warm DB. history_days=0
+            # means "March 1 of this year"; a positive value narrows the window
+            # (useful only for emergency narrowing or testing).
             if not dry_run:
-                history_start = max(date(as_of.year, 3, 1), as_of - timedelta(days=max(1, history_days) - 1))
+                season_start = date(as_of.year, 3, 1)
+                if history_days > 0:
+                    history_start = max(season_start, as_of - timedelta(days=history_days - 1))
+                else:
+                    history_start = season_start
                 ingested = _ingest_completed_history(
                     session,
                     client,
@@ -414,8 +423,10 @@ def main() -> None:
         "--history-days",
         type=int,
         default=DEFAULT_HISTORY_DAYS,
-        help=f"Rolling history window to check for missing box scores (default: {DEFAULT_HISTORY_DAYS}). "
-             "On a warm DB, already-ingested games are skipped automatically.",
+        help="How many days back to scan for missing box scores. "
+             "0 (default) = full season since March 1. "
+             "On a warm DB, already-ingested games are skipped (cheap DB check), "
+             "so the full-season scan costs almost nothing.",
     )
     parser.add_argument(
         "--force-reingest",

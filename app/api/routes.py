@@ -1885,7 +1885,7 @@ def _run_ingestion_subprocess(job_id: str, as_of: date) -> None:
     try:
         script = os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "run_pregame_update.py")
         script = os.path.abspath(script)
-        history_days = os.environ.get("PREGAME_HISTORY_DAYS", "60")
+        history_days = os.environ.get("PREGAME_HISTORY_DAYS", "0")  # 0 = full season since Mar 1
         cmd = [sys.executable, script, "--date", as_of.isoformat(), "--history-days", history_days]
         job["log_lines"].append(f"Launching ingestion command: {' '.join(cmd)}")
         proc = subprocess.Popen(

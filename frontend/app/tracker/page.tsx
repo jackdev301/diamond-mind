@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { api, getAdminToken, type BetRecord, type TrackerSummary, type TrackerSummaryGroup } from "@/lib/api";
+import { api, todayET, getAdminToken, type BetRecord, type TrackerSummary, type TrackerSummaryGroup } from "@/lib/api";
 import AdminGate from "@/components/AdminGate";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -290,7 +290,7 @@ export default function TrackerPage() {
   const [autoResult, setAutoResult] = useState<{ created: number; skipped: number } | null>(null);
   const [unlocked, setUnlocked] = useState(() => Boolean(getAdminToken()));
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayET();
 
   const load = useCallback(async () => {
     const [b, s] = await Promise.all([

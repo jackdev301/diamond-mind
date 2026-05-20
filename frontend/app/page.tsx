@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { api, type SlateGame, type BullpenData, type GameAnalysis } from "@/lib/api";
+import { api, todayET, type SlateGame, type BullpenData, type GameAnalysis } from "@/lib/api";
 import { teamLogoUrl } from "@/lib/team-logos";
 
 function TeamLogo({ abbr, size = 28 }: { abbr: string; size?: number }) {
@@ -159,7 +159,7 @@ function GameCard({ game, index }: { game: SlateGame; index: number }) {
 
 function SlatePageInner() {
   const searchParams = useSearchParams();
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayET();
   const [date, setDate] = useState(() => searchParams.get("date") ?? today);
   const [games, setGames] = useState<SlateGame[] | null>(null);
   const [error, setError] = useState(false);

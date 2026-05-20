@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { api, type GameContext, type WeatherData, type GameAnalysis, type TeamBatting } from "@/lib/api";
+import { api, todayET, type GameContext, type WeatherData, type GameAnalysis, type TeamBatting } from "@/lib/api";
 import { teamLogoUrl } from "@/lib/team-logos";
 import { Gauge, DuelBar, MethodCompare, GrowthReadout } from "@/components/quant";
 import { ExplainTooltip } from "@/components/explain";
@@ -689,7 +689,7 @@ function ModelMethodologyPanel({ homeAbbr, awayAbbr, analysis }: {
 export default function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
   const searchParams = useSearchParams();
-  const asOf = searchParams.get("date") ?? new Date().toISOString().split("T")[0];
+  const asOf = searchParams.get("date") ?? todayET();
   const [ctx, setCtx] = useState<GameContext | null>(null);
   const [homeBatting, setHomeBatting] = useState<TeamBatting | null>(null);
   const [awayBatting, setAwayBatting] = useState<TeamBatting | null>(null);

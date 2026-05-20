@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { api, getAdminToken } from "@/lib/api";
+import { api, todayET, getAdminToken } from "@/lib/api";
 import AdminGate from "@/components/AdminGate";
 
-const today = new Date().toISOString().split("T")[0];
+const today = todayET();
 
 export default function AdminPage() {
   const [date, setDate] = useState(today);

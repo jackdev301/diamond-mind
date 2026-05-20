@@ -1,6 +1,14 @@
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // ---------------------------------------------------------------------------
+// Date helpers — always use Eastern Time (America/New_York) for game dates.
+// new Date().toISOString() returns UTC and will show tomorrow after 8 PM ET.
+// ---------------------------------------------------------------------------
+export function todayET(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+
+// ---------------------------------------------------------------------------
 // Admin token — stored in localStorage, sent as X-Admin-Token on mutations.
 // ---------------------------------------------------------------------------
 export function getAdminToken(): string {

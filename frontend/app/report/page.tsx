@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { api } from "@/lib/api";
+import { api, todayET } from "@/lib/api";
 
 const METHOD_STYLE: Record<string, { label: string; color: string }> = {
   sdk:  { label: "AI · SDK",  color: "var(--green)" },
@@ -30,7 +30,7 @@ function btnStyle(active = true): React.CSSProperties {
 }
 
 export default function ReportPage() {
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayET();
   const [date, setDate] = useState(today);
   const [markdown, setMarkdown] = useState<string | null>(null);
   const [polishedText, setPolishedText] = useState<string | null>(null);

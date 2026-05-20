@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { api, type GameAnalysis } from "@/lib/api";
+import { api, todayET, type GameAnalysis } from "@/lib/api";
 import { teamLogoUrl } from "@/lib/team-logos";
 import { Gauge, DuelBar, MethodCompare, GrowthReadout, tierColor, pPlusColor } from "@/components/quant";
 import { ExplainTooltip } from "@/components/explain";
@@ -377,7 +377,7 @@ function PickCard({
 }
 
 export default function PicksPage() {
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayET();
   const [date, setDate] = useState(today);
   const [picks, setPicks] = useState<GameAnalysis[] | null>(null);
   const [error, setError] = useState(false);

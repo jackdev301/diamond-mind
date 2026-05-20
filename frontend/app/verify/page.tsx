@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, type QuantVerify } from "@/lib/api";
 import { Gauge, DuelBar, HudChip, pPlusColor } from "@/components/quant";
+import { ExplainTooltip } from "@/components/explain";
 
 function NumField({ label, value, onChange, step = 1, hint }: { label: string; value: number; onChange: (v: number) => void; step?: number; hint?: string }) {
   return (
@@ -18,10 +19,13 @@ function NumField({ label, value, onChange, step = 1, hint }: { label: string; v
   );
 }
 
-function Formula({ title, body, plug }: { title: string; body: string; plug: string }) {
+function Formula({ title, body, plug, term }: { title: string; body: string; plug: string; term?: string }) {
   return (
     <div style={{ marginBottom: "18px" }}>
-      <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "6px" }}>{title}</div>
+      <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
+        {title}
+        {term && <ExplainTooltip term={term} />}
+      </div>
       <div className="formula-block">{body}</div>
       <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--green)", marginTop: "6px", paddingLeft: "8px", borderLeft: "2px solid var(--green)" }}>{plug}</div>
     </div>
@@ -79,8 +83,19 @@ export default function VerifyPage() {
                 <div style={{ fontFamily: "var(--font-display)", fontSize: "32px", fontWeight: 800, color: tc, textTransform: "uppercase", lineHeight: 1 }}>
                   {q.recommendation}
                 </div>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-2)", marginTop: "6px" }}>
-                  model {pc(q.p_model)} → shrunk {pc(q.p_shrunk)} vs Shin market {pc(q.shin_vig_free)}
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-2)", marginTop: "6px", display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap" }}>
+                  model{" "}
+                  <span className="scoreboard-num" style={{ fontSize: "13px", color: "var(--text)" }}>{pc(q.p_model)}</span>{" "}
+                  →{" "}
+                  <ExplainTooltip term="bayesian-shrinkage">
+                    <span>shrunk</span>
+                  </ExplainTooltip>{" "}
+                  <span className="scoreboard-num" style={{ fontSize: "13px", color: "var(--text)" }}>{pc(q.p_shrunk)}</span>{" "}
+                  vs{" "}
+                  <ExplainTooltip term="shin-devig">
+                    <span>Shin market</span>
+                  </ExplainTooltip>{" "}
+                  <span className="scoreboard-num" style={{ fontSize: "13px", color: "var(--text)" }}>{pc(q.shin_vig_free)}</span>
                 </div>
                 <div style={{ marginTop: "14px" }}>
                   <DuelBar model={q.p_shrunk} market={q.shin_vig_free} lower={q.ci_low} upper={q.ci_high} />
@@ -90,7 +105,32 @@ export default function VerifyPage() {
                 <Gauge p={q.prob_positive} size={144} />
               </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "6px", marginTop: "16px" }}>
+            <div
+              className="section-label"
+              style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "16px", marginBottom: "8px", flexWrap: "wrap" }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                P(+EV)
+                <ExplainTooltip term="p-plus-ev" />
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                Log-growth
+                <ExplainTooltip term="expected-log-growth" />
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                Doubling
+                <ExplainTooltip term="doubling-time" />
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                Kelly
+                <ExplainTooltip term="uncertainty-kelly" />
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                Vig
+                <ExplainTooltip term="vig-overround" />
+              </span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "6px" }}>
               <HudChip k="EV / $1" v={`${q.ev_per_dollar >= 0 ? "+" : ""}${(q.ev_per_dollar * 100).toFixed(1)}¢`} color={q.ev_per_dollar >= 0 ? "var(--green)" : "var(--red)"} />
               <HudChip k="honest edge" v={`${q.edge_quant >= 0 ? "+" : ""}${(q.edge_quant * 100).toFixed(2)}%`} color={q.edge_quant >= 0 ? "var(--green)" : "var(--red)"} />
               <HudChip k="log-growth / bet" v={q.growth_rate > 0 ? `+${(q.growth_rate * 100).toFixed(3)}%` : "0%"} color={q.growth_rate > 0 ? "var(--green)" : "var(--text-3)"} />
@@ -128,24 +168,62 @@ export default function VerifyPage() {
 
           <Formula
             title="1 · Shin devig (favorite–longshot correction)"
+            term="shin-devig"
             body={`r_i = 1/decimal_odds_i ,  B = Σ r_i\np_i(z) = [ √( z² + 4(1−z)·r_i²/B ) − z ] / ( 2(1−z) )\nsolve z so Σ p_i = 1`}
             plug={`B = ${q.booksum.toFixed(4)} (overround) · z = ${q.shin_z.toFixed(4)} insider proportion → Shin fair = ${pc(q.shin_vig_free)} (proportional said ${pc(q.prop_vig_free)})`}
           />
           <Formula
             title="2 · Bayesian shrinkage toward the market prior"
+            term="bayesian-shrinkage"
             body={`logit(p*) = w·logit(p_model) + (1−w)·logit(p_market)\nw = evidence quality`}
             plug={`w = ${q.shrink_weight.toFixed(2)} → ${pc(q.p_model)} pulled to ${pc(q.p_shrunk)} (a lone model rarely beats a liquid market by much)`}
           />
           <Formula
             title="3 · Edge as a posterior, not a point"
+            term="p-plus-ev"
             body={`Var(p) ≈ p(1−p)/(N+1) ,  N = 60·evidence\nP(edge>0) = Φ( edge_mean / SD )`}
             plug={`N_eff = ${q.effective_n} · SD = ${(q.edge_sd * 100).toFixed(2)}% · 95% CI [${(q.ci_low * 100).toFixed(1)}%, ${(q.ci_high * 100).toFixed(1)}%] · P(+) = ${pc(q.prob_positive)}`}
           />
           <Formula
             title="4 · Uncertainty-adjusted Kelly + log-growth"
+            term="uncertainty-kelly"
             body={`f = f_full · g²/(g²+σ²)  , capped at ¼\ng_rate = p·ln(1+b·f) + q·ln(1−f)`}
             plug={`f_full = ${pc(q.kelly_full, 2)} · derived mult = ${q.kelly_multiplier.toFixed(3)} → stake ${pc(q.kelly_sized, 2)} · growth ${q.growth_rate > 0 ? "+" : ""}${(q.growth_rate * 100).toFixed(3)}%/bet${q.doubling_bets ? ` · 2× in ${q.doubling_bets} bets` : ""}`}
           />
+
+          <div
+            className="infield-divider"
+            style={{ marginTop: "8px", paddingTop: "16px", marginBottom: "10px", borderBottom: "none" }}
+          >
+            <div className="section-label" style={{ margin: 0 }}>
+              How this verdict is graded over time
+            </div>
+          </div>
+          <div
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "11px",
+              color: "var(--text-2)",
+              lineHeight: 1.6,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "8px 18px",
+            }}
+          >
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+              Forecast accuracy is scored by
+              <ExplainTooltip term="brier-score">
+                <strong style={{ color: "var(--text)" }}>Brier score</strong>
+              </ExplainTooltip>
+            </span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+              and checked for
+              <ExplainTooltip term="calibration">
+                <strong style={{ color: "var(--text)" }}>calibration</strong>
+              </ExplainTooltip>
+              on the Track Record page.
+            </span>
+          </div>
         </>
       )}
     </div>

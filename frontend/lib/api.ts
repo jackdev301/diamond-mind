@@ -262,6 +262,33 @@ export type SlateGame = {
   analysis: GameAnalysis | null;
 };
 
+export type CalibrationBucket = {
+  midpoint: number;
+  n: number;
+  actual_win_rate: number | null;
+};
+
+export type TierHitRate = {
+  tier: string;
+  n: number;
+  hit_rate: number | null;
+};
+
+export type BacktestResult = {
+  start_date: string;
+  end_date: string;
+  n: number;
+  brier_score: number | null;
+  calibration: CalibrationBucket[];
+  tier_hit_rates: TierHitRate[];
+  flat_pnl: number[];
+  kelly_pnl: number[];
+  kelly_bankroll: number[];
+  flat_pnl_total: number;
+  kelly_pnl_total: number;
+  game_ids: number[];
+};
+
 export const api = {
   games: (date: string) => get<Game[]>(`/games?game_date=${date}`),
   slate: (date: string) => get<SlateGame[]>(`/games/slate?game_date=${date}`),
@@ -346,6 +373,8 @@ export const api = {
         error: string | null;
       }>
     >(`/admin/ingestion-jobs`),
+  backtest: (start: string, end: string) =>
+    get<BacktestResult>(`/backtest?start=${start}&end=${end}`),
 };
 
 export type QuantVerify = {

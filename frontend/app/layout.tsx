@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import { NavLinks } from "./nav";
+import { GlossaryButton } from "./glossary-button";
 import "./globals.css";
 
 const FONTS_URL = "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Syne:wght@700;800&display=swap";
@@ -46,6 +47,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
           <div style={{ width: "1px", height: "16px", background: "var(--border-2)" }} />
           <NavLinks />
+          <GlossaryButton />
         </nav>
         <main style={{ maxWidth: "1120px", margin: "0 auto", padding: "28px 24px" }}>
           {children}

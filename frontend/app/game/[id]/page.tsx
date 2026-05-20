@@ -6,6 +6,7 @@ import Link from "next/link";
 import { api, type GameContext, type WeatherData, type GameAnalysis, type TeamBatting } from "@/lib/api";
 import { teamLogoUrl } from "@/lib/team-logos";
 import { Gauge, DuelBar, MethodCompare, GrowthReadout } from "@/components/quant";
+import { ExplainTooltip } from "@/components/explain";
 
 function TeamLogo({ abbr, size = 40 }: { abbr: string; size?: number }) {
   return (
@@ -133,10 +134,12 @@ function StarterCard({ abbr, starter }: { abbr: string; starter: NonNullable<Gam
               <StatRow label="ERA — Earned Run Average (runs allowed per 9 inn.; lower = better)" value={starter.era?.toFixed(2)} />
               {starter.fip != null && (
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
-                  <span style={{ fontFamily: "var(--font-body)", fontSize: "13px", color: "var(--text-2)" }}>
-                    FIP — Fielding-Independent Pitching (K, BB, HR only; luck-neutral; lg avg 3.20)
+                  <span style={{ fontFamily: "var(--font-body)", fontSize: "13px", color: "var(--text-2)", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    <ExplainTooltip term="fip">
+                      <span>FIP — Fielding-Independent Pitching (K, BB, HR only; luck-neutral; lg avg 3.20)</span>
+                    </ExplainTooltip>
                   </span>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "13px", color: fipColor, fontWeight: 600 }}>
+                  <span className="scoreboard-num" style={{ fontSize: "14px", color: fipColor }}>
                     {starter.fip.toFixed(2)}
                   </span>
                 </div>
@@ -362,8 +365,11 @@ function AnalysisPanel({ a }: { a: GameAnalysis }) {
                 <div style={{ fontSize: "9px", color: "var(--text-3)", marginTop: "2px" }}>per $1 wagered</div>
               </div>
               <div>
-                <div className="data-label" style={{ textAlign: "right" }}>Kelly</div>
-                <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "20px", color: "var(--text)", lineHeight: 1.1 }}>
+                <div className="data-label" style={{ textAlign: "right", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "4px" }}>
+                  Kelly
+                  <ExplainTooltip term="uncertainty-kelly" />
+                </div>
+                <div className="scoreboard-num" style={{ fontSize: "22px", color: "var(--text)", lineHeight: 1.1 }}>
                   {(a.ml_kelly_fraction * 100).toFixed(1)}%
                 </div>
                 <div style={{ fontSize: "9px", color: "var(--text-3)", marginTop: "2px" }}>of bankroll</div>
@@ -376,16 +382,49 @@ function AnalysisPanel({ a }: { a: GameAnalysis }) {
         <div style={{ padding: "18px 20px", borderBottom: "1px solid var(--border)" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 150px", gap: "20px", alignItems: "center", marginBottom: "16px" }}>
             <div>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-2)", marginBottom: "10px" }}>
-                model {(a.q_p_model * 100).toFixed(1)}% → shrunk{" "}
-                <strong style={{ color: "var(--text)" }}>{(a.q_p_shrunk * 100).toFixed(1)}%</strong>{" "}
-                vs Shin market {(a.q_shin_vig_free * 100).toFixed(1)}%
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-2)", marginBottom: "10px", display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap" }}>
+                model{" "}
+                <span className="scoreboard-num" style={{ fontSize: "13px", color: "var(--text)" }}>
+                  {(a.q_p_model * 100).toFixed(1)}%
+                </span>{" "}
+                →{" "}
+                <ExplainTooltip term="bayesian-shrinkage">
+                  <span>shrunk</span>
+                </ExplainTooltip>{" "}
+                <strong className="scoreboard-num" style={{ color: "var(--text)", fontSize: "13px" }}>
+                  {(a.q_p_shrunk * 100).toFixed(1)}%
+                </strong>{" "}
+                vs{" "}
+                <ExplainTooltip term="shin-devig">
+                  <span>Shin market</span>
+                </ExplainTooltip>{" "}
+                <span className="scoreboard-num" style={{ fontSize: "13px", color: "var(--text)" }}>
+                  {(a.q_shin_vig_free * 100).toFixed(1)}%
+                </span>
               </div>
               <DuelBar model={a.q_p_shrunk} market={a.q_shin_vig_free} lower={a.q_ci_low} upper={a.q_ci_high} />
             </div>
-            <div style={{ display: "flex", justifyContent: "center" }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
               <Gauge p={a.q_prob_positive} size={140} />
+              <ExplainTooltip term="p-plus-ev">
+                <span style={{ fontSize: "9px", color: "var(--text-3)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                  P(+EV)
+                </span>
+              </ExplainTooltip>
             </div>
+          </div>
+          <div
+            className="section-label"
+            style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+              Bankroll growth
+              <ExplainTooltip term="expected-log-growth" />
+            </span>
+            <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+              Doubling
+              <ExplainTooltip term="doubling-time" />
+            </span>
           </div>
           <GrowthReadout a={a} />
           {isActionable && (
@@ -409,7 +448,7 @@ function AnalysisPanel({ a }: { a: GameAnalysis }) {
                   <div className="stat-bar-track" style={{ flex: 1 }}>
                     <div className="stat-bar-fill" style={{ "--fill": `${prob * 100}%`, background: "var(--blue)" } as React.CSSProperties} />
                   </div>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", fontWeight: 600, color: "var(--text)", width: "34px", textAlign: "right" }}>
+                  <span className="scoreboard-num" style={{ fontSize: "14px", color: "var(--text)", width: "42px", textAlign: "right" }}>
                     {(prob * 100).toFixed(1)}%
                   </span>
                 </div>
@@ -426,7 +465,10 @@ function AnalysisPanel({ a }: { a: GameAnalysis }) {
             </div>
           </div>
           <div style={{ padding: "0 0 0 14px" }}>
-            <div className="data-label" style={{ marginBottom: "8px" }}>Base Rate</div>
+            <div className="data-label" style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "4px" }}>
+              Base Rate
+              <ExplainTooltip term="vig-overround" />
+            </div>
             <div style={{ fontSize: "10px", color: "var(--text-2)", lineHeight: 1.6 }}>
               Home adv: <span style={{ fontFamily: "var(--font-mono)", color: "var(--text)" }}>53.5%</span><br/>
               Vig: <span style={{ fontFamily: "var(--font-mono)", color: "var(--text)" }}>{a.overround != null ? `${((a.overround - 1) * 100).toFixed(1)}%` : "—"}</span><br/>
